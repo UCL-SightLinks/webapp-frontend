@@ -7,20 +7,37 @@
     "@emotion/styled": "^11.11.0",
     "@fontsource/inter": "^5.0.16",
     "@mui/icons-material": "^5.15.6",
-    "@mui/lab": "^5.0.0-alpha.165",
-    "@mui/material": "^5.15.6",
-    "axios": "^1.6.5",
-    "cra-template": "1.2.0",
+    "@mui/lab": "^5.0.0-alpha.175",
+    "@mui/material": "^5.15.11",
+    "axios": "^1.6.7",
     "framer-motion": "^11.11.12",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-dropzone": "^14.2.3",
     "react-router-dom": "^6.21.3",
-    "react-scripts": "^5.0.1",
+    "react-scripts": "5.0.1",
     "web-vitals": "^4.2.4"
   },
   "devDependencies": {
-    "@babel/plugin-proposal-private-property-in-object": "^7.21.11"
+    "@babel/core": "^7.24.0",
+    "@babel/eslint-parser": "^7.23.10",
+    "@babel/plugin-proposal-private-property-in-object": "^7.21.11",
+    "@babel/plugin-transform-private-methods": "^7.23.3",
+    "@babel/plugin-transform-class-properties": "^7.23.3",
+    "@babel/plugin-transform-nullish-coalescing-operator": "^7.23.3",
+    "@babel/plugin-transform-numeric-separator": "^7.23.3",
+    "@babel/plugin-transform-optional-chaining": "^7.23.3",
+    "@babel/runtime": "^7.24.0",
+    "eslint": "^8.57.0",
+    "eslint-config-react-app": "^7.0.1"
+  },
+  "resolutions": {
+    "nth-check": "^2.0.1",
+    "postcss": "^8.4.31"
+  },
+  "overrides": {
+    "nth-check": "^2.0.1",
+    "postcss": "^8.4.31"
   },
   "scripts": {
     "start": "react-scripts start",
