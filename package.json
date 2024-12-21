@@ -6,18 +6,21 @@
     "@emotion/react": "^11.11.3",
     "@emotion/styled": "^11.11.0",
     "@fontsource/inter": "^5.0.16",
-    "framer-motion": "^11.11.12",
     "@mui/icons-material": "^5.15.6",
     "@mui/lab": "^5.0.0-alpha.165",
     "@mui/material": "^5.15.6",
     "axios": "^1.6.5",
     "cra-template": "1.2.0",
+    "framer-motion": "^11.11.12",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-dropzone": "^14.2.3",
     "react-router-dom": "^6.21.3",
     "react-scripts": "^5.0.1",
     "web-vitals": "^4.2.4"
+  },
+  "devDependencies": {
+    "@babel/plugin-proposal-private-property-in-object": "^7.21.11"
   },
   "scripts": {
     "start": "react-scripts start",
