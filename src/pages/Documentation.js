@@ -5,7 +5,7 @@ import {
   ChevronRight, School, Build 
 } from '@mui/icons-material';
 import { 
-  GlassPaper, GradientTypography, IconBox, 
+  GlassPaper, IconBox, 
   AnimatedButton, PageContainer, HeroSection 
 } from '../components/StyledComponents';
 
