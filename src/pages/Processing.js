@@ -3,7 +3,7 @@ import React from 'react';
 import { 
   Container, Typography, Box, Button, ToggleButton, 
   ToggleButtonGroup, Paper, IconButton, LinearProgress, 
-  Grid, Fade, Stepper, Step, StepLabel, StepContent,
+  Grid, Stepper, Step, StepLabel,
   useTheme
 } from '@mui/material';
 import { 
@@ -81,66 +81,6 @@ const StyledToggleButton = styled(ToggleButton)(({ theme }) => ({
   }
 }));
 
-const AnimatedButton = styled(Button)(({ theme }) => ({
-  borderRadius: '12px',
-  padding: '12px 24px',
-  transition: 'all 0.3s ease',
-  position: 'relative',
-  overflow: 'hidden',
-  '&:before': {
-    content: '""',
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    width: '100%',
-    height: '100%',
-    background: 'linear-gradient(45deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0) 100%)',
-    transition: 'all 0.3s ease',
-  },
-  '&:hover': {
-    transform: 'translateY(-2px)',
-    '&:before': {
-      transform: 'translateX(100%)',
-    }
-  }
-}));
-
-const UploadArea = styled(Box)(({ theme, isDragActive }) => ({
-  padding: theme.spacing(6),
-  borderRadius: theme.shape.borderRadius * 2,
-  border: `2px dashed ${isDragActive ? theme.palette.primary.main : 'rgba(0, 0, 0, 0.1)'}`,
-  backgroundColor: isDragActive ? 'rgba(9, 132, 227, 0.04)' : 'rgba(255, 255, 255, 0.6)',
-  transition: 'all 0.3s ease',
-  cursor: 'pointer',
-  textAlign: 'center',
-  '&:hover': {
-    backgroundColor: 'rgba(9, 132, 227, 0.02)',
-    borderColor: theme.palette.primary.main,
-    transform: 'translateY(-2px)',
-  }
-}));
-
-function CustomStepIcon({ icon, completed, active }) {
-  const getStepIcon = (step) => {
-    switch (step) {
-      case 1:
-        return <MapIcon fontSize="small" />;
-      case 2:
-        return <CategoryIcon fontSize="small" />;
-      case 3:
-        return <UploadFileIcon fontSize="small" />;
-      default:
-        return null;
-    }
-  };
-
-  return (
-    <StyledStepIcon completed={completed} active={active}>
-      {completed ? <CheckCircleIcon fontSize="small" /> : getStepIcon(icon)}
-    </StyledStepIcon>
-  );
-}
-
 const IconContainer = styled(Box)(({ selected }) => ({
   width: 64,
   height: 64,
@@ -170,53 +110,6 @@ const ButtonContainer = styled(Box)(({ theme }) => ({
   gap: theme.spacing(2),
   marginTop: 'auto',
   paddingTop: theme.spacing(3),
-}));
-
-const ObjectToggleButton = styled(ToggleButton)(({ theme }) => ({
-  borderRadius: '8px !important',
-  padding: '8px 16px',
-  border: '1px solid rgba(0, 0, 0, 0.08)',
-  transition: 'all 0.3s ease',
-  backgroundColor: 'rgba(255, 255, 255, 0.8)',
-  flex: 1,
-  '&.Mui-selected': {
-    backgroundColor: 'rgba(9, 132, 227, 0.08)',
-    color: theme.palette.primary.main,
-    fontWeight: 600,
-    border: '1px solid rgba(9, 132, 227, 0.3)',
-    boxShadow: '0 4px 12px rgba(9, 132, 227, 0.12)',
-    '&::before': {
-      content: '"✓"',
-      marginRight: theme.spacing(1),
-      fontWeight: 'bold',
-    }
-  },
-  '&:hover': {
-    backgroundColor: 'rgba(9, 132, 227, 0.04)',
-    transform: 'translateY(-2px)',
-  }
-}));
-
-const ContinueButton = styled(Button)(({ theme }) => ({
-  flex: 1,
-  padding: '12px 24px',
-  borderRadius: '10px',
-  background: 'linear-gradient(45deg, #0984E3 30%, #74B9FF 90%)',
-  boxShadow: '0 8px 24px rgba(9, 132, 227, 0.25)',
-  transition: 'all 0.3s ease',
-  '& .arrow-icon': {
-    opacity: 0,
-    width: 0,
-    marginLeft: 0,
-    transition: 'all 0.3s ease',
-  },
-  '&:hover': {
-    '& .arrow-icon': {
-      opacity: 1,
-      width: '24px',
-      marginLeft: theme.spacing(1),
-    }
-  }
 }));
 
 const DetectionObjectCard = styled(Paper)(({ theme, selected }) => ({
@@ -282,20 +175,50 @@ const FileCard = styled(Paper)(({ theme }) => ({
   }
 }));
 
-const ResultButton = styled(Button)(({ theme }) => ({
-  padding: '12px 32px',
-  borderRadius: '30px',
+function CustomStepIcon({ icon, completed, active }) {
+  const getStepIcon = (step) => {
+    switch (step) {
+      case 1:
+        return <MapIcon fontSize="small" />;
+      case 2:
+        return <CategoryIcon fontSize="small" />;
+      case 3:
+        return <UploadFileIcon fontSize="small" />;
+      default:
+        return null;
+    }
+  };
+
+  return (
+    <StyledStepIcon completed={completed} active={active}>
+      {completed ? <CheckCircleIcon fontSize="small" /> : getStepIcon(icon)}
+    </StyledStepIcon>
+  );
+}
+
+const ContinueButton = styled(Button)(({ theme }) => ({
+  flex: 1,
+  padding: '12px 24px',
+  borderRadius: '10px',
+  background: 'linear-gradient(45deg, #0984E3 30%, #74B9FF 90%)',
+  boxShadow: '0 8px 24px rgba(9, 132, 227, 0.25)',
   transition: 'all 0.3s ease',
-  fontSize: '1rem',
-  fontWeight: 600,
+  '& .arrow-icon': {
+    opacity: 0,
+    width: 0,
+    marginLeft: 0,
+    transition: 'all 0.3s ease',
+  },
   '&:hover': {
-    transform: 'translateY(-2px)',
-    boxShadow: '0 8px 24px rgba(0, 0, 0, 0.1)',
+    '& .arrow-icon': {
+      opacity: 1,
+      width: '24px',
+      marginLeft: theme.spacing(1),
+    }
   }
 }));
 
 function Processing() {
-  const theme = useTheme();
   const [activeStep, setActiveStep] = useState(0);
   const [selectedObjects, setSelectedObjects] = useState(['Benches']);
   const [inputType, setInputType] = useState('DigiMap');

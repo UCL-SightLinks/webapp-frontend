@@ -1,9 +1,8 @@
-import { Container, Typography, Grid, IconButton, Box } from '@mui/material';
+import { Container, Typography, Grid, Box } from '@mui/material';
 import { motion } from 'framer-motion';
 import { 
   Visibility, Speed, Security, 
   Timeline, Psychology, CloudDone,
-  GitHub, LinkedIn, Twitter,
   Rocket as RocketIcon,
   PeopleAlt as TeamIcon,
   Lightbulb as VisionIcon,
