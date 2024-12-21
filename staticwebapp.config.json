@@ -1,0 +1,17 @@
+{
+  "platform": {
+    "apiRuntime": "node:18"
+  },
+  "buildProperties": {
+    "skipBuildDuringDeploy": false,
+    "apiBuildCommand": "npm run build",
+    "outputLocation": "build"
+  },
+  "routes": [
+    {
+      "route": "/*",
+      "serve": "/index.html",
+      "statusCode": 200
+    }
+  ]
+} 
