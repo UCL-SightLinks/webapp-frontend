@@ -169,12 +169,30 @@ const FileCard = styled(Paper)(({ theme }) => ({
   borderRadius: '16px',
   border: '1px solid rgba(0, 0, 0, 0.08)',
   backgroundColor: 'rgba(255, 255, 255, 0.8)',
-  transition: 'all 0.3s ease',
-  transform: 'translateX(0)',
+  transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+  position: 'relative',
+  overflow: 'hidden',
   '&:hover': {
     backgroundColor: 'rgba(255, 255, 255, 0.95)',
-    transform: 'translateX(8px)',
-    boxShadow: '0 4px 12px rgba(0, 0, 0, 0.05)',
+    boxShadow: '0 8px 24px rgba(9, 132, 227, 0.12)',
+    border: '1px solid rgba(9, 132, 227, 0.2)',
+    '& .file-icon-container': {
+      backgroundColor: 'rgba(9, 132, 227, 0.12)',
+      transform: 'scale(1.05)',
+    },
+    '& .file-icon': {
+      color: '#0984E3',
+      transform: 'scale(1.1)',
+    },
+    '& .file-type': {
+      backgroundColor: 'rgba(9, 132, 227, 0.08)',
+      color: '#0984E3',
+    },
+    '& .delete-button': {
+      opacity: 1,
+      transform: 'translateX(0) scale(1)',
+      visibility: 'visible',
+    }
   }
 }));
 
@@ -354,6 +372,15 @@ function Processing() {
         return newProgress;
       });
     }, 500);
+  };
+
+  const handleDownload = () => {
+    const link = document.createElement('a');
+    link.href = '/output.json';
+    link.download = 'output.json';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   const steps = [
@@ -942,6 +969,7 @@ function Processing() {
                     <FileCard>
                       <Box sx={{ display: 'flex', alignItems: 'center', flex: 1 }}>
                         <Box
+                          className="file-icon-container"
                           sx={{
                             width: 40,
                             height: 40,
@@ -951,13 +979,15 @@ function Processing() {
                             alignItems: 'center',
                             justifyContent: 'center',
                             mr: 2,
-                            transition: 'all 0.3s ease',
+                            transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
                           }}
                         >
                           <ArticleIcon 
+                            className="file-icon"
                             sx={{ 
-                              color: '#0984E3',
+                              color: 'rgba(9, 132, 227, 0.6)',
                               fontSize: 20,
+                              transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
                             }} 
                           />
                         </Box>
@@ -978,6 +1008,7 @@ function Processing() {
                           </Typography>
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                             <Typography 
+                              className="file-type"
                               variant="caption" 
                               sx={{ 
                                 color: 'text.secondary',
@@ -987,7 +1018,8 @@ function Processing() {
                                 borderRadius: '20px',
                                 fontWeight: 500,
                                 textTransform: 'uppercase',
-                                letterSpacing: '0.02em'
+                                letterSpacing: '0.02em',
+                                transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
                               }}
                             >
                               {file.name.split('.').pop().toUpperCase()}
@@ -1002,34 +1034,38 @@ function Processing() {
                           </Box>
                         </Box>
                       </Box>
-                      <motion.div
-                        whileHover={{ scale: 1.1 }}
-                        whileTap={{ scale: 0.9 }}
+                      <IconButton 
+                        className="delete-button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const element = e.currentTarget.parentElement;
+                          element.style.opacity = '0';
+                          element.style.transform = 'scale(0.95)';
+                          setTimeout(() => {
+                            setUploadedFiles(files => files.filter((_, i) => i !== index));
+                          }, 200);
+                        }}
+                        sx={{
+                          width: 32,
+                          height: 32,
+                          color: 'text.secondary',
+                          transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                          opacity: 0,
+                          visibility: 'hidden',
+                          transform: 'translateX(10px) scale(0.8)',
+                          backgroundColor: 'rgba(0, 0, 0, 0.04)',
+                          '&:hover': {
+                            backgroundColor: '#EF5350',
+                            color: 'white',
+                            transform: 'translateX(0) scale(1.1)',
+                          }
+                        }}
                       >
-                        <IconButton 
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            const element = e.currentTarget.parentElement.parentElement.parentElement;
-                            element.style.transform = 'translateX(-100%)';
-                            element.style.opacity = '0';
-                            setTimeout(() => {
-                              setUploadedFiles(files => files.filter((_, i) => i !== index));
-                            }, 300);
-                          }}
-                          sx={{
-                            width: 32,
-                            height: 32,
-                            color: 'text.secondary',
-                            transition: 'all 0.2s ease',
-                            '&:hover': {
-                              backgroundColor: 'error.light',
-                              color: 'error.main',
-                            }
-                          }}
-                        >
-                          <CloseIcon sx={{ fontSize: 18 }} />
-                        </IconButton>
-                      </motion.div>
+                        <CloseIcon sx={{ 
+                          fontSize: 18,
+                          transition: 'all 0.2s ease',
+                        }} />
+                      </IconButton>
                     </FileCard>
                   </motion.div>
                 ))}
@@ -1325,6 +1361,7 @@ function Processing() {
                       </Button>
                       <ContinueButton
                         variant="contained"
+                        onClick={handleDownload}
                         sx={{ 
                           flex: '0 1 280px',
                         }}
