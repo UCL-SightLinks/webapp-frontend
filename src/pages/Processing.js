@@ -855,7 +855,7 @@ function Processing() {
                 }
               }}
             >
-              <input {...getInputProps()} accept={inputType === 'DigiMap' ? '.zip' : '.jpg,.jgw'} />
+              <input {...getInputProps()} accept={inputType === 'DigiMap' ? '.zip' : '.jpg,.jgw,.zip'} />
               {uploadedFiles.length > 0 ? (
                 <Box sx={{ 
                   display: 'flex', 
@@ -922,7 +922,7 @@ function Processing() {
                     <Typography variant="caption" color="text.secondary" sx={{ opacity: 0.8 }}>
                       {inputType === 'DigiMap' 
                         ? 'Supported format: .zip'
-                        : 'Supported formats: .jpg + .jgw files'}
+                        : 'Supported formats: .jpg + .jgw files or .zip containing both files'}
                     </Typography>
                   </Box>
                 </>
@@ -1153,8 +1153,6 @@ function Processing() {
               <Grid item xs={12} md={4}>
                 <StyledPaper 
                   sx={{ 
-                    position: 'sticky', 
-                    top: 90,
                     background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.95) 0%, rgba(255, 255, 255, 0.85) 100%)',
                   }}
                 >
