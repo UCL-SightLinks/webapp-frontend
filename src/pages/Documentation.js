@@ -8,33 +8,39 @@ import {
   GlassPaper, IconBox, 
   AnimatedButton, PageContainer, HeroSection 
 } from '../components/StyledComponents';
+import { useNavigate } from 'react-router-dom';
 
 function Documentation() {
+  const navigate = useNavigate();
+
   const mainSections = [
     {
-      title: 'Getting Started',
-      description: 'Quick start guide and basic concepts',
+      title: 'GitHub Setup',
+      description: 'How to run and set up our project',
       icon: Description,
-      items: ['Installation', 'Basic Usage', 'Configuration']
+      items: ['Prerequisites', 'Installation Steps', 'Running the Application'],
+      path: '/github-setup'
     },
     {
-      title: 'API Reference',
-      description: 'Detailed API documentation',
+      title: 'API Documentation',
+      description: 'Complete API reference and usage',
       icon: Code,
-      items: ['Endpoints', 'Authentication', 'Response Formats']
+      items: ['Authentication', 'Endpoints Reference', 'Response Examples'],
+      path: '/api-docs'
     },
     {
-      title: 'Tutorials',
-      description: 'Step-by-step guides',
+      title: 'Algorithm Guide',
+      description: 'Understanding our computer vision approach',
       icon: School,
-      items: ['Basic Analysis', 'Advanced Features', 'Best Practices']
+      items: ['Core Concepts', 'Technical Details', 'Implementation'],
+      path: '/algorithm-guide'
     }
   ];
 
   const quickLinks = [
-    { title: 'Installation Guide', icon: Build },
-    { title: 'API Documentation', icon: Code },
-    { title: 'Examples', icon: LibraryBooks },
+    { title: 'Setup Guide', icon: Build, path: '/github-setup' },
+    { title: 'API Reference', icon: Code, path: '/api-docs' },
+    { title: 'Algorithm', icon: LibraryBooks, path: '/algorithm-guide' },
   ];
 
   const fadeInUp = {
@@ -74,20 +80,30 @@ function Documentation() {
                   fontSize: '1.125rem',
                 }}
               >
-                Everything you need to know about using our satellite computer vision platform
+                Everything you need to know about our satellite image analysis platform
               </Typography>
             </Box>
 
-            <Box sx={{ display: 'flex', justifyContent: 'center', gap: 2 }}>
+            <Box sx={{ display: 'flex', justifyContent: 'center', gap: 2, flexWrap: 'wrap' }}>
               {quickLinks.map((link, index) => (
                 <AnimatedButton
                   key={index}
                   variant="outlined"
                   startIcon={<link.icon />}
+                  onClick={() => navigate(link.path)}
                   sx={{ 
                     borderRadius: '20px',
-                    px: 4,
-                    py: 1.5,
+                    px: 3,
+                    py: 1,
+                    minWidth: '160px',
+                    backgroundColor: 'rgba(255, 255, 255, 0.8)',
+                    borderColor: 'rgba(0, 0, 0, 0.12)',
+                    transition: 'all 0.2s ease-in-out',
+                    '&:hover': {
+                      backgroundColor: 'rgba(255, 255, 255, 0.95)',
+                      transform: 'translateY(-2px)',
+                      boxShadow: '0 4px 12px rgba(0, 0, 0, 0.08)',
+                    }
                   }}
                 >
                   {link.title}
@@ -102,83 +118,99 @@ function Documentation() {
                 <motion.div
                   {...fadeInUp}
                   transition={{ delay: index * 0.1 }}
+                  style={{ height: '100%' }}
                 >
                   <GlassPaper sx={{ 
+                    height: '100%',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    p: 4,
+                    transition: 'transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out',
                     '&:hover': {
                       transform: 'translateY(-4px)',
+                      boxShadow: '0 12px 40px rgba(0, 0, 0, 0.12)'
                     }
                   }}>
-                    <IconBox>
+                    <IconBox sx={{ mb: 3 }}>
                       <section.icon sx={{ fontSize: 30 }} />
                     </IconBox>
                     
-                    <Typography variant="h5" gutterBottom sx={{ fontWeight: 600 }}>
+                    <Typography variant="h5" gutterBottom sx={{ fontWeight: 600, mb: 2 }}>
                       {section.title}
                     </Typography>
-                    <Typography color="text.secondary" sx={{ mb: 4 }}>
+                    <Typography color="text.secondary" sx={{ mb: 4, flex: 1 }}>
                       {section.description}
                     </Typography>
                     
-                    {section.items.map((item, idx) => (
-                      <AnimatedButton
-                        key={idx}
-                        fullWidth
-                        sx={{
-                          justifyContent: 'space-between',
-                          textAlign: 'left',
-                          mb: 1,
-                          py: 1.5,
-                          color: 'text.primary',
-                          '&:hover': {
-                            backgroundColor: 'rgba(9, 132, 227, 0.08)',
-                          }
-                        }}
-                        endIcon={<ChevronRight />}
-                      >
-                        {item}
-                      </AnimatedButton>
-                    ))}
+                    <Box>
+                      {section.items.map((item, idx) => (
+                        <AnimatedButton
+                          key={idx}
+                          fullWidth
+                          onClick={() => navigate(section.path)}
+                          sx={{
+                            justifyContent: 'space-between',
+                            textAlign: 'left',
+                            mb: idx !== section.items.length - 1 ? 1 : 0,
+                            py: 1.5,
+                            color: 'text.primary',
+                            borderRadius: '8px',
+                            '&:hover': {
+                              backgroundColor: 'rgba(9, 132, 227, 0.08)',
+                            }
+                          }}
+                          endIcon={<ChevronRight />}
+                        >
+                          {item}
+                        </AnimatedButton>
+                      ))}
+                    </Box>
                   </GlassPaper>
                 </motion.div>
               </Grid>
             ))}
           </Grid>
 
-          <GlassPaper sx={{ 
-            mt: 8, 
-            p: 8, 
-            textAlign: 'center',
-            background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.95) 0%, rgba(255, 255, 255, 0.85) 100%)',
-          }}>
-            <Typography variant="h4" gutterBottom sx={{ fontWeight: 600 }}>
-              Need Help?
-            </Typography>
-            <Typography 
-              color="text.secondary" 
-              sx={{ 
-                mb: 4, 
-                maxWidth: '600px', 
-                mx: 'auto',
-                fontSize: '1.1rem',
-                lineHeight: 1.8
-              }}
-            >
-              Can't find what you're looking for? Our support team is here to help.
-            </Typography>
-            <AnimatedButton 
-              variant="contained" 
-              size="large"
-              sx={{ 
-                borderRadius: '30px',
-                px: 6,
-                py: 2,
-                background: 'linear-gradient(45deg, #0984E3 30%, #74B9FF 90%)',
-                boxShadow: '0 8px 24px rgba(9, 132, 227, 0.25)',
-              }}
-            >
-              Contact Support
-            </AnimatedButton>
-          </GlassPaper>
+          <Box sx={{ mt: 8 }}>
+            <GlassPaper sx={{ 
+              p: 8, 
+              textAlign: 'center',
+              background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.95) 0%, rgba(255, 255, 255, 0.85) 100%)',
+              transition: 'transform 0.2s ease-in-out',
+              '&:hover': {
+                transform: 'translateY(-4px)',
+              }
+            }}>
+              <Typography variant="h4" gutterBottom sx={{ fontWeight: 600 }}>
+                Need Help?
+              </Typography>
+              <Typography 
+                color="text.secondary" 
+                sx={{ 
+                  mb: 4, 
+                  maxWidth: '600px', 
+                  mx: 'auto',
+                  fontSize: '1.1rem',
+                  lineHeight: 1.8
+                }}
+              >
+                Can't find what you're looking for? Our support team is here to help.
+              </Typography>
+              <AnimatedButton 
+                variant="contained" 
+                size="large"
+                sx={{ 
+                  borderRadius: '30px',
+                  px: 6,
+                  py: 2,
+                  background: 'linear-gradient(45deg, #0984E3 30%, #74B9FF 90%)',
+                  boxShadow: '0 8px 24px rgba(9, 132, 227, 0.25)',
+                }}
+              >
+                Contact Support
+              </AnimatedButton>
+            </GlassPaper>
+          </Box>
         </motion.div>
       </PageContainer>
     </Container>

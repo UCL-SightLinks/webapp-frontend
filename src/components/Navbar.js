@@ -82,7 +82,7 @@ function Navbar() {
             transition={{ duration: 0.5 }}
           >
             <LogoContainer onClick={() => navigate('/')} sx={{ mr: 4 }}>
-              <img src="/favicon.ico" alt="SightLink Logo" style={{ width: 32, height: 32 }} />
+              <img src="/favicon.ico" alt="SightLinks Logo" style={{ width: 32, height: 32 }} />
               <Typography 
                 variant="h6" 
                 component="div" 
@@ -93,7 +93,7 @@ function Navbar() {
                   WebkitTextFillColor: 'transparent',
                 }}
               >
-                SightLink
+                SightLinks
               </Typography>
             </LogoContainer>
           </motion.div>

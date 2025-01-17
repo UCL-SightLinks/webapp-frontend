@@ -8,6 +8,9 @@ import Footer from './components/Footer';
 import Documentation from './pages/Documentation';
 import Processing from './pages/Processing';
 import About from './pages/About';
+import GitHubSetup from './pages/GitHubSetup';
+import ApiDocs from './pages/ApiDocs';
+import AlgorithmGuide from './pages/AlgorithmGuide';
 import './App.css';
 
 function App() {
@@ -27,6 +30,9 @@ function App() {
               <Route path="/" element={<Documentation />} />
               <Route path="/processing" element={<Processing />} />
               <Route path="/about" element={<About />} />
+              <Route path="/github-setup" element={<GitHubSetup />} />
+              <Route path="/api-docs" element={<ApiDocs />} />
+              <Route path="/algorithm-guide" element={<AlgorithmGuide />} />
             </Routes>
           </Box>
           <Footer />

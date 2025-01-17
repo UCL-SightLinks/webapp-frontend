@@ -324,19 +324,25 @@ const ContinueButton = styled(Button)(({ theme }) => ({
   borderRadius: '10px',
   background: 'linear-gradient(45deg, #0984E3 30%, #74B9FF 90%)',
   boxShadow: '0 8px 24px rgba(9, 132, 227, 0.25)',
-  transition: 'all 0.3s ease',
+  transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
   '& .arrow-icon': {
     opacity: 0,
     width: 0,
     marginLeft: 0,
-    transition: 'all 0.3s ease',
+    transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
   },
   '&:hover': {
+    transform: 'translateY(-2px)',
+    boxShadow: '0 12px 28px rgba(9, 132, 227, 0.3)',
     '& .arrow-icon': {
       opacity: 1,
       width: '24px',
       marginLeft: theme.spacing(1),
     }
+  },
+  '&:active': {
+    transform: 'translateY(0)',
+    boxShadow: '0 8px 24px rgba(9, 132, 227, 0.25)',
   }
 }));
 
@@ -1177,9 +1183,9 @@ function Processing() {
                           </Typography>
                           {activeStep === index && (
                             <motion.div
-                              initial={{ opacity: 0, y: -10 }}
+                              initial={{ opacity: 0, y: -5 }}
                               animate={{ opacity: 1, y: 0 }}
-                              transition={{ duration: 0.3 }}
+                              transition={{ duration: 0.2 }}
                             >
                               <Typography 
                                 variant="body2" 
@@ -1200,9 +1206,17 @@ function Processing() {
                 </StyledPaper>
               </Grid>
               <Grid item xs={12} md={8}>
-                <StyledPaper>
-                  {steps[activeStep].content}
-                </StyledPaper>
+                <motion.div
+                  key={activeStep}
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -20 }}
+                  transition={{ duration: 0.3, ease: "easeOut" }}
+                >
+                  <StyledPaper>
+                    {steps[activeStep].content}
+                  </StyledPaper>
+                </motion.div>
               </Grid>
             </Grid>
           ) : isProcessing ? (
