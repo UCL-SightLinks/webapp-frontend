@@ -182,6 +182,51 @@ function Documentation() {
               }
             }}>
               <Typography variant="h4" gutterBottom sx={{ fontWeight: 600 }}>
+                Project Report
+              </Typography>
+              <Typography 
+                color="text.secondary" 
+                sx={{ 
+                  mb: 4, 
+                  maxWidth: '600px', 
+                  mx: 'auto',
+                  fontSize: '1.1rem',
+                  lineHeight: 1.8
+                }}
+              >
+                Explore our comprehensive project report covering requirements, research, algorithms, design, implementation, testing, and evaluation.
+              </Typography>
+              <AnimatedButton 
+                variant="contained" 
+                size="large"
+                href="http://students.cs.ucl.ac.uk/2024/group15/index.html"
+                target="_blank"
+                rel="noopener noreferrer"
+                sx={{ 
+                  borderRadius: '30px',
+                  px: 6,
+                  py: 2,
+                  background: 'linear-gradient(45deg, #0984E3 30%, #74B9FF 90%)',
+                  boxShadow: '0 8px 24px rgba(9, 132, 227, 0.25)',
+                  mb: 8
+                }}
+              >
+                View Full Report
+              </AnimatedButton>
+            </GlassPaper>
+          </Box>
+
+          <Box sx={{ mt: 8 }}>
+            <GlassPaper sx={{ 
+              p: 8, 
+              textAlign: 'center',
+              background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.95) 0%, rgba(255, 255, 255, 0.85) 100%)',
+              transition: 'transform 0.2s ease-in-out',
+              '&:hover': {
+                transform: 'translateY(-4px)',
+              }
+            }}>
+              <Typography variant="h4" gutterBottom sx={{ fontWeight: 600 }}>
                 Need Help?
               </Typography>
               <Typography 

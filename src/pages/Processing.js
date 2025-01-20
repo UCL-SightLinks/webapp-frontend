@@ -5,7 +5,10 @@ import {
   ToggleButtonGroup, Paper, IconButton, LinearProgress, 
   Grid, Stepper, Step, StepLabel,
   useTheme,
-  Switch
+  Switch,
+  Alert,
+  Snackbar,
+  CircularProgress
 } from '@mui/material';
 import { 
   CloudUpload as UploadIcon,
@@ -20,6 +23,8 @@ import {
   TableRows as TableRowsIcon,
   Escalator as EscalatorIcon,
   DirectionsWalk as DirectionsWalkIcon,
+  DataObject as DataObjectIcon,
+  Info as InfoIcon
 } from '@mui/icons-material';
 import { motion } from 'framer-motion';
 import { useDropzone } from 'react-dropzone';
@@ -297,6 +302,33 @@ const StyledSwitch = styled(Switch)(({ theme }) => ({
   },
 }));
 
+const TetrominoLoader = styled('div')({
+  position: 'relative',
+  width: '224px',
+  height: '224px',
+  margin: '0 auto',
+  marginBottom: '2rem',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+});
+
+const TetrominoContainer = styled('div')({
+  position: 'absolute',
+  top: '50%',
+  left: '50%',
+  transform: 'translate(-112px, -96px)',
+});
+
+const Tetromino = styled('div')({
+  width: '96px',
+  height: '112px',
+  position: 'absolute',
+  transition: 'all ease 0.3s',
+  background: `url('data:image/svg+xml;utf-8,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 612 684"%3E%3Cpath fill="%230984E3" d="M305.7 0L0 170.9v342.3L305.7 684 612 513.2V170.9L305.7 0z"/%3E%3Cpath fill="%23fff" d="M305.7 80.1l-233.6 131 233.6 131 234.2-131-234.2-131"/%3E%3C/svg%3E') no-repeat top center`,
+  backgroundSize: 'contain',
+});
+
 function CustomStepIcon({ icon, completed, active }) {
   const getStepIcon = (step) => {
     switch (step) {
@@ -346,6 +378,71 @@ const ContinueButton = styled(Button)(({ theme }) => ({
   }
 }));
 
+// Update API configuration
+const API_CONFIG = {
+  baseUrl: process.env.REACT_APP_API_BASE_URL || 'http://localhost:5010',
+  endpoints: {
+    webPredict: '/web/predict',
+    status: '/web/status',
+    download: '/download'
+  }
+};
+
+// Add processing stages configuration
+const PROCESSING_STAGES = {
+  'Initializing': 5,
+  'Extracting files': 10,
+  'Initializing model': 20,
+  'Processing images': 40,
+  'Segmenting images': 60,
+  'Creating bounding boxes': 70,
+  'Saving results': 80,
+  'Creating ZIP file': 90,
+  'Completed': 100
+};
+
+// Add keyframe animations
+const GlobalStyles = styled('style')({
+  '& @keyframes tetromino1': {
+    '0%, 40%': {
+      transform: 'translate(0, 0)',
+    },
+    '50%': {
+      transform: 'translate(48px, -27px)',
+    },
+    '60%, 100%': {
+      transform: 'translate(96px, 0)',
+    },
+  },
+  '& @keyframes tetromino2': {
+    '0%, 20%': {
+      transform: 'translate(96px, 0px)',
+    },
+    '40%, 100%': {
+      transform: 'translate(144px, 27px)',
+    },
+  },
+  '& @keyframes tetromino3': {
+    '0%': {
+      transform: 'translate(144px, 27px)',
+    },
+    '20%, 60%': {
+      transform: 'translate(96px, 54px)',
+    },
+    '90%, 100%': {
+      transform: 'translate(48px, 27px)',
+    },
+  },
+  '& @keyframes tetromino4': {
+    '0%, 60%': {
+      transform: 'translate(48px, 27px)',
+    },
+    '90%, 100%': {
+      transform: 'translate(0, 0)',
+    },
+  },
+});
+
 function Processing() {
   const [activeStep, setActiveStep] = useState(0);
   const [selectedObjects, setSelectedObjects] = useState(['Zebra Cross']);
@@ -356,37 +453,253 @@ function Processing() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [processSuccess, setProcessSuccess] = useState(false);
   const [progress, setProgress] = useState(0);
+  const [apiError, setApiError] = useState(null);
+  const [processingId, setProcessingId] = useState(null);
+  const [statusCheckInterval, setStatusCheckInterval] = useState(null);
+  const [taskId, setTaskId] = useState(null);
+  const [downloadToken, setDownloadToken] = useState(null);
+  const [processingStage, setProcessingStage] = useState('');
+  const [isCancelling, setIsCancelling] = useState(false);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop: (acceptedFiles) => {
-      setUploadedFiles([...uploadedFiles, ...acceptedFiles]);
-    }
+      const zipFiles = acceptedFiles.filter(
+        file => file.type === 'application/zip' || file.name.endsWith('.zip')
+      );
+      if (zipFiles.length === 0) {
+        setApiError('Please upload a ZIP file');
+        return;
+      }
+      setUploadedFiles(zipFiles);
+    },
+    accept: {
+      'application/zip': ['.zip']
+    },
+    multiple: false
   });
 
-  const handleStartProcessing = () => {
-    setIsProcessing(true);
-    const timer = setInterval(() => {
-      setProgress((oldProgress) => {
-        const newProgress = oldProgress + 10;
-        if (newProgress === 100) {
-          clearInterval(timer);
-          setTimeout(() => {
-            setIsProcessing(false);
-            setProcessSuccess(true);
-          }, 500);
-        }
-        return newProgress;
+  // Update API-related functions
+  const uploadToApi = async (files) => {
+    try {
+      const formData = new FormData();
+      const zipFile = files.find(file => file.type === 'application/zip' || file.name.endsWith('.zip'));
+      if (!zipFile) {
+        throw new Error('Please upload a ZIP file containing images');
+      }
+      formData.append('file', zipFile);
+      
+      // Match exact parameter names from API doc
+      formData.append('input_type', inputType === 'DigiMap' ? '0' : '1');
+      formData.append('save_labeled_image', saveLabeledImages ? 'true' : 'false');
+      formData.append('classification_threshold', '0.35');
+      formData.append('prediction_threshold', '0.5');
+      formData.append('yolo_model_type', 'n');
+      formData.append('output_type', outputFormat === 'JSON' ? '0' : '1');
+
+      console.log('Sending request to:', `${API_CONFIG.baseUrl}${API_CONFIG.endpoints.webPredict}`);
+      const response = await fetch(`${API_CONFIG.baseUrl}${API_CONFIG.endpoints.webPredict}`, {
+        method: 'POST',
+        body: formData
       });
-    }, 500);
+
+      const data = await response.json();
+      console.log('Upload response:', data);
+      
+      if (!response.ok) {
+        throw new Error(data.error || `API Error: ${response.statusText}`);
+      }
+
+      if (data.task_id) {
+        console.log('Received task ID:', data.task_id);
+        setTaskId(data.task_id);
+        setProcessingStage(data.message || 'Task queued successfully');
+        startStatusCheck(data.task_id);
+      } else {
+        throw new Error('No task ID received from server');
+      }
+    } catch (error) {
+      console.error('Upload error:', error);
+      setApiError(error.message);
+      setIsProcessing(false);
+      setProcessSuccess(false);
+    }
   };
 
-  const handleDownload = () => {
-    const link = document.createElement('a');
-    link.href = '/output.json';
-    link.download = 'output.json';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+  const checkProcessingStatus = async (id) => {
+    if (!id) return;
+    
+    try {
+      const statusUrl = `${API_CONFIG.baseUrl}${API_CONFIG.endpoints.status}/${id}`;
+      console.log('Checking status at:', statusUrl);
+      
+      const response = await fetch(statusUrl);
+      const data = await response.json();
+      console.log('Status response:', data);
+
+      if (!response.ok) {
+        if (response.status === 404) {
+          throw new Error('Task not found');
+        }
+        throw new Error(data.error || 'Failed to check status');
+      }
+
+      // Update progress and stage based on API response
+      setProgress(data.progress || 0);
+      setProcessingStage(data.stage || 'Processing...');
+
+      switch (data.status) {
+        case 'completed':
+          console.log('Processing completed, download token:', data.download_token);
+          clearInterval(statusCheckInterval);
+          setStatusCheckInterval(null);
+          setProcessSuccess(true);
+          setIsProcessing(false);
+          if (data.download_token) {
+            setDownloadToken(data.download_token);
+          } else {
+            throw new Error('No download token received');
+          }
+          break;
+        case 'failed':
+          console.error('Processing failed:', data.error);
+          clearInterval(statusCheckInterval);
+          setStatusCheckInterval(null);
+          setIsProcessing(false);
+          setProcessSuccess(false);
+          throw new Error(data.error || 'Processing failed');
+        case 'queued':
+          console.log('Task queued');
+          setProcessingStage('Waiting in queue...');
+          break;
+        case 'processing':
+          console.log('Processing:', data.stage, data.progress + '%');
+          break;
+        default:
+          console.warn('Unknown status:', data.status);
+          break;
+      }
+    } catch (error) {
+      console.error('Status check error:', error);
+      if (error.message === 'Task not found' || error.message.includes('failed')) {
+        clearInterval(statusCheckInterval);
+        setStatusCheckInterval(null);
+        setApiError(error.message);
+        setIsProcessing(false);
+        setProcessSuccess(false);
+      }
+    }
+  };
+
+  const handleDownload = async () => {
+    if (!downloadToken) {
+      setApiError('No download token available');
+      return;
+    }
+
+    try {
+      console.log('Downloading with token:', downloadToken);
+      const response = await fetch(`${API_CONFIG.baseUrl}${API_CONFIG.endpoints.download}/${downloadToken}`);
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('Invalid or expired download token');
+        } else if (response.status === 404) {
+          throw new Error('Results not found');
+        }
+        throw new Error('Failed to download results');
+      }
+      
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `results.zip`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Download error:', error);
+      setApiError(error.message);
+    }
+  };
+
+  const startStatusCheck = (id) => {
+    if (statusCheckInterval) {
+      clearInterval(statusCheckInterval);
+    }
+    
+    // Immediate first check
+    checkProcessingStatus(id);
+    
+    // Then start polling every 2 seconds
+    const interval = setInterval(() => checkProcessingStatus(id), 4000);
+    setStatusCheckInterval(interval);
+  };
+
+  // Modify handleStartProcessing
+  const handleStartProcessing = async () => {
+    setIsProcessing(true);
+    setProgress(0);
+    setProcessSuccess(false);
+    setApiError(null);
+    setProcessingStage('Starting upload...');
+    await uploadToApi(uploadedFiles);
+  };
+
+  // Update cleanup effect
+  React.useEffect(() => {
+    return () => {
+      if (statusCheckInterval) {
+        clearInterval(statusCheckInterval);
+      }
+    };
+  }, [statusCheckInterval]);
+
+  // Add task ID cleanup
+  React.useEffect(() => {
+    return () => {
+      setTaskId(null);
+      setDownloadToken(null);
+    };
+  }, []);
+
+  // Add error handling UI
+  const handleCloseError = () => {
+    setApiError(null);
+  };
+
+  // Add cancel handler
+  const handleCancelProcessing = async () => {
+    if (!taskId || isCancelling) return;
+    
+    try {
+      setIsCancelling(true);
+      const response = await fetch(`${API_CONFIG.baseUrl}/web/cancel/${taskId}`, {
+        method: 'POST'
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to cancel processing');
+      }
+
+      // Clear interval and reset states
+      if (statusCheckInterval) {
+        clearInterval(statusCheckInterval);
+        setStatusCheckInterval(null);
+      }
+      setApiError('Processing cancelled');
+      setIsProcessing(false);
+      setProcessSuccess(false);
+      setProgress(0);
+      setTaskId(null);
+      setProcessingStage('Cancelled');
+    } catch (error) {
+      console.error('Cancel error:', error);
+      setApiError(error.message);
+    } finally {
+      setIsCancelling(false);
+    }
   };
 
   const steps = [
@@ -1110,8 +1423,258 @@ function Processing() {
     }
   ];
 
+  // Update the processing status display
+  const renderProcessingStatus = () => {
+    const currentStage = Object.entries(PROCESSING_STAGES).find(
+      ([_, stageProgress]) => progress <= stageProgress
+    )?.[0] || 'Processing...';
+
+    const getCurrentAndUpcomingStages = () => {
+      const allStages = Object.entries(PROCESSING_STAGES);
+      const currentIndex = allStages.findIndex(([_, stageProgress]) => progress <= stageProgress);
+      const start = Math.max(0, currentIndex - 1);
+      return allStages.slice(start, start + 3);
+    };
+
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5 }}
+      >
+        <StyledPaper 
+          sx={{ 
+            p: { xs: 4, md: 6 },
+            background: 'white',
+            position: 'relative',
+            overflow: 'hidden',
+            minHeight: '500px',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            textAlign: 'center',
+            gap: 4
+          }}
+        >
+          {/* Cancel Button */}
+          <Box sx={{ 
+            position: 'absolute',
+            top: 24,
+            right: 24
+          }}>
+            <IconButton
+              onClick={handleCancelProcessing}
+              disabled={isCancelling}
+              sx={{
+                color: 'rgba(239, 83, 80, 0.8)',
+                '&:hover': {
+                  backgroundColor: 'rgba(239, 83, 80, 0.04)'
+                }
+              }}
+            >
+              {isCancelling ? (
+                <CircularProgress size={20} sx={{ color: 'rgba(239, 83, 80, 0.8)' }} />
+              ) : (
+                <CloseIcon />
+              )}
+            </IconButton>
+          </Box>
+
+          {/* Progress Circle */}
+          <Box sx={{ 
+            width: { xs: '120px', md: '160px' },
+            height: { xs: '120px', md: '160px' },
+            position: 'relative',
+            mt: 4
+          }}>
+            <Box
+              sx={{
+                position: 'absolute',
+                top: '50%',
+                left: '50%',
+                width: '100%',
+                height: '100%',
+                borderRadius: '50%',
+                background: `conic-gradient(from 0deg, 
+                  #0984E3 0%, 
+                  #0984E3 ${progress}%, 
+                  #E8F4FF ${progress}%, 
+                  #E8F4FF 100%
+                )`,
+                transform: 'translate(-50%, -50%) rotate(-90deg)',
+                '&::before': {
+                  content: '""',
+                  position: 'absolute',
+                  inset: '8px',
+                  borderRadius: '50%',
+                  background: 'white'
+                }
+              }}
+            />
+            <Box
+              sx={{
+                position: 'absolute',
+                top: '50%',
+                left: '50%',
+                transform: 'translate(-50%, -50%)',
+                textAlign: 'center',
+                zIndex: 1
+              }}
+            >
+              <Typography
+                variant="h4"
+                sx={{
+                  fontWeight: 600,
+                  color: '#0984E3',
+                  fontSize: { xs: '1.75rem', md: '2rem' }
+                }}
+              >
+                {progress}%
+              </Typography>
+            </Box>
+          </Box>
+
+          {/* Status Text */}
+          <Box sx={{ mb: 2 }}>
+            <Typography variant="h5" sx={{ fontWeight: 600, mb: 1 }}>
+              Processing Files
+            </Typography>
+            <Typography variant="body1" color="text.secondary">
+              {currentStage}
+            </Typography>
+          </Box>
+
+          {/* Stages Timeline */}
+          <Box sx={{ 
+            width: '100%',
+            maxWidth: '400px'
+          }}>
+            {getCurrentAndUpcomingStages().map(([stage, stageProgress], index) => (
+              <motion.div
+                key={stage}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: index * 0.1 }}
+              >
+                <Box
+                  sx={{
+                    p: 2,
+                    mb: 1.5,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 2
+                  }}
+                >
+                  <Box
+                    sx={{
+                      width: 24,
+                      height: 24,
+                      borderRadius: '50%',
+                      backgroundColor: progress >= stageProgress ? 
+                        '#0984E3' : 
+                        'rgba(0, 0, 0, 0.04)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: 'white'
+                    }}
+                  >
+                    {progress >= stageProgress ? (
+                      <CheckCircleIcon sx={{ fontSize: 16 }} />
+                    ) : (
+                      <CircularProgress 
+                        size={14} 
+                        thickness={6}
+                        sx={{ color: 'rgba(0, 0, 0, 0.2)' }} 
+                      />
+                    )}
+                  </Box>
+                  <Box sx={{ flex: 1 }}>
+                    <Typography
+                      variant="body2"
+                      sx={{
+                        color: progress >= stageProgress ? 
+                          'text.primary' : 
+                          'text.secondary',
+                        fontWeight: progress >= stageProgress ? 500 : 400,
+                        mb: 0.5
+                      }}
+                    >
+                      {stage}
+                    </Typography>
+                    <LinearProgress
+                      variant="determinate"
+                      value={progress >= stageProgress ? 100 : 0}
+                      sx={{
+                        height: 2,
+                        borderRadius: 1,
+                        backgroundColor: 'rgba(0, 0, 0, 0.04)',
+                        '& .MuiLinearProgress-bar': {
+                          backgroundColor: '#0984E3'
+                        }
+                      }}
+                    />
+                  </Box>
+                </Box>
+              </motion.div>
+            ))}
+          </Box>
+
+          {/* Info Message */}
+          <Box 
+            sx={{ 
+              mt: 'auto',
+              pt: 2,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 1,
+              backgroundColor: 'rgba(25, 118, 210, 0.04)',
+              borderRadius: '12px',
+              py: 1.5,
+              px: 3
+            }}
+          >
+            <InfoIcon sx={{ fontSize: 20, color: '#0984E3' }} />
+            <Typography variant="body2" color="text.secondary">
+              Please keep this window open while processing
+            </Typography>
+          </Box>
+        </StyledPaper>
+      </motion.div>
+    );
+  };
+
+  // Reset all states
+  const resetStates = () => {
+    setProcessSuccess(false);
+    setUploadedFiles([]);
+    setProgress(0);
+    setActiveStep(0);
+    setTaskId(null);
+    setDownloadToken(null);
+    setProcessingStage('');
+    setApiError(null);
+    setIsProcessing(false);
+    if (statusCheckInterval) {
+      clearInterval(statusCheckInterval);
+      setStatusCheckInterval(null);
+    }
+  };
+
   return (
     <Container maxWidth="lg">
+      <GlobalStyles />
+      <Snackbar 
+        open={!!apiError} 
+        autoHideDuration={6000} 
+        onClose={handleCloseError}
+        anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
+      >
+        <Alert onClose={handleCloseError} severity="error" sx={{ width: '100%' }}>
+          {apiError}
+        </Alert>
+      </Snackbar>
+      
       <Box sx={{ py: 8 }}>
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -1220,33 +1783,8 @@ function Processing() {
               </Grid>
             </Grid>
           ) : isProcessing ? (
-            <StyledPaper sx={{ p: 6, textAlign: 'center' }}>
-              <Typography variant="h5" gutterBottom>
-                Processing Files...
-              </Typography>
-              <Box sx={{ width: '100%', mt: 4 }}>
-                <LinearProgress 
-                  variant="determinate" 
-                  value={progress} 
-                  sx={{ 
-                    height: 8, 
-                    borderRadius: 4,
-                    backgroundColor: 'rgba(9, 132, 227, 0.1)',
-                    '& .MuiLinearProgress-bar': {
-                      background: 'linear-gradient(90deg, #0984E3 0%, #74B9FF 100%)',
-                    }
-                  }} 
-                />
-                <Typography 
-                  variant="body2" 
-                  color="text.secondary"
-                  sx={{ mt: 2 }}
-                >
-                  {`${progress}% Complete`}
-                </Typography>
-              </Box>
-            </StyledPaper>
-          ) : (
+            renderProcessingStatus()
+          ) : processSuccess ? (
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
@@ -1341,6 +1879,57 @@ function Processing() {
                     >
                       Your files have been successfully processed and are ready for download
                     </Typography>
+                    <Box
+                      sx={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: 1.5,
+                        mb: 6,
+                        background: 'linear-gradient(135deg, rgba(9, 132, 227, 0.08) 0%, rgba(116, 185, 255, 0.08) 100%)',
+                        backdropFilter: 'blur(10px)',
+                        borderRadius: '12px',
+                        border: '1px solid rgba(9, 132, 227, 0.12)',
+                        py: 1.5,
+                        px: 3,
+                        maxWidth: 'fit-content',
+                        mx: 'auto',
+                        boxShadow: '0 4px 12px rgba(9, 132, 227, 0.08)',
+                      }}
+                    >
+                      <Box
+                        sx={{
+                          width: 24,
+                          height: 24,
+                          borderRadius: '50%',
+                          backgroundColor: 'rgba(9, 132, 227, 0.12)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          flexShrink: 0,
+                        }}
+                      >
+                        <Typography
+                          sx={{
+                            fontSize: '14px',
+                            color: '#0984E3',
+                            lineHeight: 1,
+                          }}
+                        >
+                          ℹ️
+                        </Typography>
+                      </Box>
+                      <Typography
+                        variant="body2"
+                        sx={{
+                          color: '#0984E3',
+                          fontWeight: 300,
+                          letterSpacing: '0.01em',
+                        }}
+                      >
+                        Results will be expired in 2 hours
+                      </Typography>
+                    </Box>
                   </motion.div>
                   <motion.div
                     initial={{ opacity: 0, y: 20 }}
@@ -1356,12 +1945,7 @@ function Processing() {
                     >
                       <Button
                         variant="outlined"
-                        onClick={() => {
-                          setProcessSuccess(false);
-                          setUploadedFiles([]);
-                          setProgress(0);
-                          setActiveStep(0);
-                        }}
+                        onClick={resetStates}
                         sx={{
                           flex: 1,
                           py: 1.5,
@@ -1386,7 +1970,7 @@ function Processing() {
                 </motion.div>
               </StyledPaper>
             </motion.div>
-          )}
+          ) : null}
         </motion.div>
       </Box>
     </Container>
