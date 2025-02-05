@@ -8,7 +8,8 @@ import {
   Switch,
   Alert,
   Snackbar,
-  CircularProgress
+  CircularProgress,
+  Tooltip
 } from '@mui/material';
 import { 
   CloudUpload as UploadIcon,
@@ -24,9 +25,14 @@ import {
   Escalator as EscalatorIcon,
   DirectionsWalk as DirectionsWalkIcon,
   DataObject as DataObjectIcon,
-  Info as InfoIcon
+  Info as InfoIcon,
+  Settings as SettingsIcon,
+  Queue as QueueIcon,
+  Memory as MemoryIcon,
+  Folder as FolderIcon,
+  ErrorOutline as ErrorOutlineIcon
 } from '@mui/icons-material';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useDropzone } from 'react-dropzone';
 import { styled } from '@mui/material/styles';
 
@@ -380,25 +386,14 @@ const ContinueButton = styled(Button)(({ theme }) => ({
 
 // Update API configuration
 const API_CONFIG = {
-  baseUrl: process.env.REACT_APP_API_BASE_URL || 'http://localhost:5010',
+  baseUrl: 'http://api.sightlinks.org',  // Updated base URL
   endpoints: {
     webPredict: '/web/predict',
     status: '/web/status',
-    download: '/download'
+    download: '/download',
+    cancel: '/web/cancel',
+    serverStatus: '/api/server-status'
   }
-};
-
-// Add processing stages configuration
-const PROCESSING_STAGES = {
-  'Initializing': 5,
-  'Extracting files': 10,
-  'Initializing model': 20,
-  'Processing images': 40,
-  'Segmenting images': 60,
-  'Creating bounding boxes': 70,
-  'Saving results': 80,
-  'Creating ZIP file': 90,
-  'Completed': 100
 };
 
 // Add keyframe animations
@@ -443,6 +438,49 @@ const GlobalStyles = styled('style')({
   },
 });
 
+// Add new styled components for server status
+const ServerStatusContainer = styled(Box)(({ theme }) => ({
+  marginTop: theme.spacing(2),
+  padding: theme.spacing(2),
+  borderTop: '1px solid rgba(0, 0, 0, 0.06)',
+  display: 'flex',
+  flexDirection: 'column',
+  gap: theme.spacing(1.5),  // Reduced gap
+  flex: 0,
+  justifyContent: 'flex-end'
+}));
+
+const StatusCard = styled(Box)(({ theme }) => ({
+  padding: theme.spacing(1.5),  // Reduced padding
+  borderRadius: theme.shape.borderRadius,
+  backgroundColor: 'rgba(255, 255, 255, 0.7)',
+  border: '1px solid rgba(0, 0, 0, 0.04)',
+  display: 'flex',
+  alignItems: 'center',
+  gap: theme.spacing(1.5),  // Reduced gap
+  transition: 'all 0.3s ease',
+  '&:hover': {
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    transform: 'translateY(-2px)',
+    boxShadow: '0 4px 12px rgba(0, 0, 0, 0.05)',
+  }
+}));
+
+const StatusIcon = styled(Box)(({ theme, color }) => ({
+  width: 36,  // Reduced size
+  height: 36,  // Reduced size
+  borderRadius: 10,
+  backgroundColor: `rgba(${color}, 0.1)`,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  '& svg': {
+    fontSize: 18,  // Reduced size
+    color: `rgb(${color})`,
+  }
+}));
+
+// Add server status state
 function Processing() {
   const [activeStep, setActiveStep] = useState(0);
   const [selectedObjects, setSelectedObjects] = useState(['Zebra Cross']);
@@ -460,43 +498,72 @@ function Processing() {
   const [downloadToken, setDownloadToken] = useState(null);
   const [processingStage, setProcessingStage] = useState('');
   const [isCancelling, setIsCancelling] = useState(false);
+  const [hasDetections, setHasDetections] = useState(null);
+  const [serverStatus, setServerStatus] = useState({
+    total_tasks_processed: 0,
+    total_files_processed: 0,
+    failed_tasks: 0,
+    cancelled_tasks: 0,
+    current_tasks: 0,
+    queued_tasks: 0,
+    uptime_seconds: 0,
+    max_concurrent_tasks: 0,
+    max_queue_size: 0,
+    cpu_usage_percent: 0
+  });
+  const [statusError, setStatusError] = useState(null);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop: (acceptedFiles) => {
+      // Reset any previous errors
+      setApiError(null);
+
+      // Only accept ZIP files
       const zipFiles = acceptedFiles.filter(
         file => file.type === 'application/zip' || file.name.endsWith('.zip')
       );
+
       if (zipFiles.length === 0) {
-        setApiError('Please upload a ZIP file');
+        setApiError('Please upload a ZIP file containing your data');
         return;
       }
-      setUploadedFiles(zipFiles);
+
+      setUploadedFiles([...uploadedFiles, ...zipFiles]);
     },
-    accept: {
-      'application/zip': ['.zip']
-    },
-    multiple: false
+    accept: { 'application/zip': ['.zip'] },
+    multiple: true,
+    noClick: false,
+    noKeyboard: false
   });
 
-  // Update API-related functions
   const uploadToApi = async (files) => {
     try {
       const formData = new FormData();
+      
+      // API only accepts ZIP files
       const zipFile = files.find(file => file.type === 'application/zip' || file.name.endsWith('.zip'));
       if (!zipFile) {
-        throw new Error('Please upload a ZIP file containing images');
+        throw new Error('Only ZIP files are accepted for processing');
       }
       formData.append('file', zipFile);
       
-      // Match exact parameter names from API doc
-      formData.append('input_type', inputType === 'DigiMap' ? '0' : '1');
-      formData.append('save_labeled_image', saveLabeledImages ? 'true' : 'false');
-      formData.append('classification_threshold', '0.35');
-      formData.append('prediction_threshold', '0.5');
-      formData.append('yolo_model_type', 'n');
-      formData.append('output_type', outputFormat === 'JSON' ? '0' : '1');
+      // Convert parameters to the exact types expected by the API
+      formData.append('input_type', String(inputType === 'DigiMap' ? 0 : 1)); // Send as string "0" or "1"
+      formData.append('save_labeled_image', String(saveLabeledImages)); // Send as string "true" or "false"
+      formData.append('classification_threshold', String(0.35)); // Send as string "0.35"
+      formData.append('prediction_threshold', String(0.5)); // Send as string "0.5"
+      formData.append('yolo_model_type', 'n'); // Send as string "n"
+      formData.append('output_type', String(outputFormat === 'JSON' ? 0 : 1)); // Send as string "0" or "1"
 
-      console.log('Sending request to:', `${API_CONFIG.baseUrl}${API_CONFIG.endpoints.webPredict}`);
+      // Debug log to verify files being sent
+      console.log('Uploading files to API...');
+      console.log('API URL:', `${API_CONFIG.baseUrl}${API_CONFIG.endpoints.webPredict}`);
+      console.log('Input Type:', inputType);
+      console.log('Files being sent:');
+      for (let pair of formData.entries()) {
+        console.log(pair[0], pair[1]);
+      }
+
       const response = await fetch(`${API_CONFIG.baseUrl}${API_CONFIG.endpoints.webPredict}`, {
         method: 'POST',
         body: formData
@@ -506,11 +573,14 @@ function Processing() {
       console.log('Upload response:', data);
       
       if (!response.ok) {
+        if (response.status === 503) {
+          throw new Error('Server is busy. Please try again later.');
+        }
         throw new Error(data.error || `API Error: ${response.statusText}`);
       }
 
       if (data.task_id) {
-        console.log('Received task ID:', data.task_id);
+        console.log('Task ID received:', data.task_id);
         setTaskId(data.task_id);
         setProcessingStage(data.message || 'Task queued successfully');
         startStatusCheck(data.task_id);
@@ -526,15 +596,22 @@ function Processing() {
   };
 
   const checkProcessingStatus = async (id) => {
-    if (!id) return;
-    
+    if (!id) {
+      console.log('No task ID provided for status check');
+      return;
+    }
+
     try {
-      const statusUrl = `${API_CONFIG.baseUrl}${API_CONFIG.endpoints.status}/${id}`;
-      console.log('Checking status at:', statusUrl);
-      
-      const response = await fetch(statusUrl);
+      console.log('Checking status for task:', id);
+      const response = await fetch(`${API_CONFIG.baseUrl}${API_CONFIG.endpoints.status}/${id}`);
       const data = await response.json();
       console.log('Status response:', data);
+
+      // Only ignore updates if explicitly cancelled
+      if (isCancelling) {
+        console.log('Processing was cancelled, ignoring status update');
+        return;
+      }
 
       if (!response.ok) {
         if (response.status === 404) {
@@ -543,51 +620,70 @@ function Processing() {
         throw new Error(data.error || 'Failed to check status');
       }
 
-      // Update progress and stage based on API response
-      setProgress(data.progress || 0);
-      setProcessingStage(data.stage || 'Processing...');
+      // Update progress and stage
+      const newProgress = data.percentage || 0;
+      setProgress(newProgress);
+      setProcessingStage(data.log || 'Processing...');
 
-      switch (data.status) {
-        case 'completed':
-          console.log('Processing completed, download token:', data.download_token);
-          clearInterval(statusCheckInterval);
-          setStatusCheckInterval(null);
-          setProcessSuccess(true);
-          setIsProcessing(false);
-          if (data.download_token) {
+      // Handle error in response
+      if (data.error) {
+        throw new Error(data.error);
+      }
+
+      // Update has_detections state when available
+      if (data.has_detections !== undefined) {
+        setHasDetections(data.has_detections);
+      }
+
+      // Handle download token
+      if (data.download_token) {
+        console.log('Processing complete, download token:', data.download_token);
+        // Ensure we reach 100% before completing
+        setProgress(100);
+        
+        // Wait for progress animation to complete
+        setTimeout(() => {
+          // Double check we haven't been cancelled during the timeout
+          if (!isCancelling) {
+            if (statusCheckInterval) {
+              clearInterval(statusCheckInterval);
+              setStatusCheckInterval(null);
+            }
+            setProcessSuccess(true);
+            setIsProcessing(false);
             setDownloadToken(data.download_token);
-          } else {
-            throw new Error('No download token received');
           }
-          break;
-        case 'failed':
-          console.error('Processing failed:', data.error);
-          clearInterval(statusCheckInterval);
-          setStatusCheckInterval(null);
-          setIsProcessing(false);
-          setProcessSuccess(false);
-          throw new Error(data.error || 'Processing failed');
-        case 'queued':
-          console.log('Task queued');
-          setProcessingStage('Waiting in queue...');
-          break;
-        case 'processing':
-          console.log('Processing:', data.stage, data.progress + '%');
-          break;
-        default:
-          console.warn('Unknown status:', data.status);
-          break;
+        }, 1000);
       }
     } catch (error) {
       console.error('Status check error:', error);
-      if (error.message === 'Task not found' || error.message.includes('failed')) {
+      setApiError(error.message);
+      if (statusCheckInterval) {
         clearInterval(statusCheckInterval);
         setStatusCheckInterval(null);
-        setApiError(error.message);
-        setIsProcessing(false);
-        setProcessSuccess(false);
       }
+      setIsProcessing(false);
+      setProcessSuccess(false);
     }
+  };
+
+  const startStatusCheck = (id) => {
+    if (statusCheckInterval) {
+      clearInterval(statusCheckInterval);
+    }
+    
+    // Reset cancelling state when starting new check
+    setIsCancelling(false);
+    
+    // Immediately check status
+    checkProcessingStatus(id);
+    
+    // Set up interval for subsequent checks
+    const interval = setInterval(() => {
+      checkProcessingStatus(id);
+    }, 3000);
+    
+    setStatusCheckInterval(interval);
   };
 
   const handleDownload = async () => {
@@ -597,19 +693,24 @@ function Processing() {
     }
 
     try {
-      console.log('Downloading with token:', downloadToken);
+      console.log('Initiating download...');
+      console.log('Download URL:', `${API_CONFIG.baseUrl}${API_CONFIG.endpoints.download}/${downloadToken}`);
       const response = await fetch(`${API_CONFIG.baseUrl}${API_CONFIG.endpoints.download}/${downloadToken}`);
 
       if (!response.ok) {
+        console.error('Download failed:', response.status, response.statusText);
         if (response.status === 401) {
           throw new Error('Invalid or expired download token');
         } else if (response.status === 404) {
           throw new Error('Results not found');
+        } else if (response.status === 500) {
+          throw new Error('Server error while downloading results');
         }
         throw new Error('Failed to download results');
       }
       
       const blob = await response.blob();
+      console.log('Download successful, blob size:', blob.size);
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
@@ -624,30 +725,17 @@ function Processing() {
     }
   };
 
-  const startStatusCheck = (id) => {
-    if (statusCheckInterval) {
-      clearInterval(statusCheckInterval);
-    }
-    
-    // Immediate first check
-    checkProcessingStatus(id);
-    
-    // Then start polling every 2 seconds
-    const interval = setInterval(() => checkProcessingStatus(id), 4000);
-    setStatusCheckInterval(interval);
-  };
-
-  // Modify handleStartProcessing
   const handleStartProcessing = async () => {
     setIsProcessing(true);
     setProgress(0);
+    setDisplayProgress(0);
+    progressRef.current = 0;
     setProcessSuccess(false);
     setApiError(null);
     setProcessingStage('Starting upload...');
     await uploadToApi(uploadedFiles);
   };
 
-  // Update cleanup effect
   React.useEffect(() => {
     return () => {
       if (statusCheckInterval) {
@@ -656,7 +744,6 @@ function Processing() {
     };
   }, [statusCheckInterval]);
 
-  // Add task ID cleanup
   React.useEffect(() => {
     return () => {
       setTaskId(null);
@@ -664,36 +751,51 @@ function Processing() {
     };
   }, []);
 
-  // Add error handling UI
   const handleCloseError = () => {
     setApiError(null);
   };
 
-  // Add cancel handler
   const handleCancelProcessing = async () => {
     if (!taskId || isCancelling) return;
     
     try {
       setIsCancelling(true);
-      const response = await fetch(`${API_CONFIG.baseUrl}/web/cancel/${taskId}`, {
-        method: 'POST'
+      console.log('Cancelling task:', taskId);
+      
+      // Send cancel request to API first
+      const response = await fetch(`${API_CONFIG.baseUrl}${API_CONFIG.endpoints.cancel}/${taskId}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        }
       });
 
+      const data = await response.json();
+      console.log('Cancel response:', data);
+
       if (!response.ok) {
-        throw new Error('Failed to cancel processing');
+        throw new Error(data.error || 'Failed to cancel processing');
       }
 
-      // Clear interval and reset states
+      // Only after successful API cancellation, update local states
       if (statusCheckInterval) {
         clearInterval(statusCheckInterval);
         setStatusCheckInterval(null);
       }
-      setApiError('Processing cancelled');
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
+
       setIsProcessing(false);
-      setProcessSuccess(false);
-      setProgress(0);
       setTaskId(null);
-      setProcessingStage('Cancelled');
+      setProgress(0);
+      setDisplayProgress(0);
+      progressRef.current = 0;
+      setProcessingStage('Processing cancelled');
+      setDownloadToken(null);
+      setProcessSuccess(false);
+      setApiError('Processing cancelled by user');
+
     } catch (error) {
       console.error('Cancel error:', error);
       setApiError(error.message);
@@ -721,7 +823,6 @@ function Processing() {
               Configure your data source and result format
             </Typography>
             
-            {/* Input Type Selection */}
             <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2 }}>
               Input Type
             </Typography>
@@ -825,7 +926,6 @@ function Processing() {
               </Grid>
             </Grid>
 
-            {/* Output Format Section */}
             <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2 }}>
               Output Format
             </Typography>
@@ -976,7 +1076,6 @@ function Processing() {
               Choose detection objects and visualization options
             </Typography>
             
-            {/* Detection Objects Section */}
             <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2 }}>
               Detection Objects
             </Typography>
@@ -1027,7 +1126,6 @@ function Processing() {
               ))}
             </Grid>
 
-            {/* Save Labeled Images Toggle */}
             <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2 }}>
               Visualization Options
             </Typography>
@@ -1353,16 +1451,19 @@ function Processing() {
                           </Box>
                         </Box>
                       </Box>
+                      <Box sx={{ display: 'flex', gap: 1 }}>
+                        {/* Delete Single File Button */}
+                        <Tooltip 
+                          title="Delete this file" 
+                          placement="top"
+                          arrow
+                        >
                       <IconButton 
                         className="delete-button"
                         onClick={(e) => {
                           e.stopPropagation();
-                          const element = e.currentTarget.parentElement;
-                          element.style.opacity = '0';
-                          element.style.transform = 'scale(0.95)';
-                          setTimeout(() => {
-                            setUploadedFiles(files => files.filter((_, i) => i !== index));
-                          }, 200);
+                              const newFiles = uploadedFiles.filter((_, i) => i !== index);
+                              setUploadedFiles(newFiles);
                         }}
                         sx={{
                           width: 32,
@@ -1385,6 +1486,60 @@ function Processing() {
                           transition: 'all 0.2s ease',
                         }} />
                       </IconButton>
+                        </Tooltip>
+
+                        {/* Delete Pair Button - Only show for JPG/JGW files */}
+                        {(file.name.toLowerCase().endsWith('.jpg') || 
+                          file.name.toLowerCase().endsWith('.jpeg') ||
+                          file.name.toLowerCase().endsWith('.jgw')) && (
+                          <Tooltip 
+                            title={`Delete both ${file.name.slice(0, -4)}.jpg and ${file.name.slice(0, -4)}.jgw files`}
+                            placement="top"
+                            arrow
+                          >
+                            <IconButton 
+                              className="delete-button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const baseName = file.name.slice(0, -4);
+                                const newFiles = uploadedFiles.filter(f => {
+                                  const fileBaseName = f.name.slice(0, -4);
+                                  return fileBaseName !== baseName;
+                                });
+                                setUploadedFiles(newFiles);
+                              }}
+                              sx={{
+                                width: 32,
+                                height: 32,
+                                color: 'text.secondary',
+                                transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                                opacity: 0,
+                                visibility: 'hidden',
+                                transform: 'translateX(10px) scale(0.8)',
+                                backgroundColor: 'rgba(0, 0, 0, 0.04)',
+                                '&:hover': {
+                                  backgroundColor: '#FF9800',
+                                  color: 'white',
+                                  transform: 'translateX(0) scale(1.1)',
+                                }
+                              }}
+                            >
+                              <Box 
+                                component="span" 
+                                sx={{ 
+                                  fontSize: '14px',
+                                  fontWeight: 'bold',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center'
+                                }}
+                              >
+                                2×
+                              </Box>
+                            </IconButton>
+                          </Tooltip>
+                        )}
+                      </Box>
                     </FileCard>
                   </motion.div>
                 ))}
@@ -1423,19 +1578,177 @@ function Processing() {
     }
   ];
 
-  // Update the processing status display
-  const renderProcessingStatus = () => {
-    const currentStage = Object.entries(PROCESSING_STAGES).find(
-      ([_, stageProgress]) => progress <= stageProgress
-    )?.[0] || 'Processing...';
+  // Add animated progress value with linear interpolation
+  const [animatedProgress, setAnimatedProgress] = React.useState(0);
+  const [displayProgress, setDisplayProgress] = React.useState(0);
+  const progressRef = React.useRef(0);
+  const animationFrameRef = React.useRef();
 
-    const getCurrentAndUpcomingStages = () => {
-      const allStages = Object.entries(PROCESSING_STAGES);
-      const currentIndex = allStages.findIndex(([_, stageProgress]) => progress <= stageProgress);
-      const start = Math.max(0, currentIndex - 1);
-      return allStages.slice(start, start + 3);
+  // Update the progress animation effect
+  React.useEffect(() => {
+    const animateProgress = () => {
+      const diff = progress - progressRef.current;
+      
+      // If the difference is very small, snap to the target value
+      if (Math.abs(diff) < 0.5) {
+        progressRef.current = progress;
+        setDisplayProgress(Math.round(progress));
+        cancelAnimationFrame(animationFrameRef.current);
+        return;
+      }
+
+      // Calculate step size based on the difference
+      const stepSize = Math.max(Math.abs(diff) * 0.15, 0.5); // Minimum step of 0.5
+      const step = diff > 0 ? stepSize : -stepSize;
+
+      // Update the progress
+      const nextProgress = progressRef.current + step;
+      
+      // Ensure we don't overshoot
+      if ((diff > 0 && nextProgress > progress) || (diff < 0 && nextProgress < progress)) {
+        progressRef.current = progress;
+        setDisplayProgress(Math.round(progress));
+      } else {
+        progressRef.current = nextProgress;
+        setDisplayProgress(Math.round(nextProgress));
+      }
+
+      // Continue animation
+      animationFrameRef.current = requestAnimationFrame(animateProgress);
     };
 
+    // Start animation
+    animationFrameRef.current = requestAnimationFrame(animateProgress);
+
+    // Cleanup
+    return () => {
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
+    };
+  }, [progress]);
+
+  // Add cleanup for animation frame on unmount
+  React.useEffect(() => {
+    return () => {
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
+    };
+  }, []);
+
+  // Update the progress circle component
+  const renderProgressCircle = () => (
+          <Box
+            sx={{
+              position: 'relative',
+        width: { xs: '260px', md: '300px' },
+        height: { xs: '260px', md: '300px' },
+              display: 'flex',
+              alignItems: 'center',
+        justifyContent: 'center',
+        mt: 2
+            }}
+          >
+      {/* Background Glow */}
+              <Box
+                sx={{
+                  position: 'absolute',
+          width: '140%',
+          height: '140%',
+          background: `radial-gradient(circle, rgba(9, 132, 227, 0.08) 0%, transparent 70%)`,
+          animation: 'pulse 2s infinite',
+          '@keyframes pulse': {
+            '0%': {
+              transform: 'scale(0.95)',
+              opacity: 0.5,
+            },
+            '50%': {
+              transform: 'scale(1)',
+              opacity: 0.3,
+            },
+            '100%': {
+              transform: 'scale(0.95)',
+              opacity: 0.5,
+            },
+          },
+        }}
+      />
+
+      {/* Background Circle */}
+      <CircularProgress
+        variant="determinate"
+        value={100}
+        size="100%"
+        thickness={2}
+              sx={{
+                position: 'absolute',
+          color: 'rgba(0, 0, 0, 0.04)',
+          transform: 'rotate(-90deg)'
+        }}
+      />
+      
+      {/* Progress Circle */}
+      <CircularProgress
+        variant="determinate"
+        value={displayProgress}
+        size="100%"
+        thickness={2}
+        sx={{
+                  position: 'absolute',
+          color: '#0984E3',
+          transform: 'rotate(-90deg)',
+          '& .MuiCircularProgress-circle': {
+            strokeLinecap: 'round',
+            transition: 'stroke-dashoffset 0.3s linear'
+                }
+              }}
+            />
+
+            {/* Progress Text */}
+            <Box
+              sx={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: 1
+        }}
+      >
+        <Box sx={{ textAlign: 'center' }}>
+              <Typography
+            variant="h2"
+                sx={{
+              fontWeight: 600,
+              fontSize: { xs: '3.5rem', md: '4rem' },
+              color: '#0984E3',
+              fontFamily: 'monospace',
+              letterSpacing: '-0.05em',
+                  lineHeight: 1,
+                  mb: 1
+                }}
+              >
+            {displayProgress}
+              </Typography>
+              <Typography
+            variant="h5"
+                sx={{
+              fontWeight: 600,
+              fontSize: { xs: '1.25rem', md: '1.5rem' },
+              color: '#0984E3',
+              opacity: 0.5,
+                  fontFamily: 'monospace',
+              letterSpacing: '-0.05em'
+                }}
+              >
+            %
+              </Typography>
+            </Box>
+          </Box>
+    </Box>
+  );
+
+  // Update the processing status render function
+  const renderProcessingStatus = () => {
     return (
       <motion.div
         initial={{ opacity: 0, y: 20 }}
@@ -1443,208 +1756,353 @@ function Processing() {
         transition={{ duration: 0.5 }}
       >
         <StyledPaper 
-          sx={{ 
+            sx={{
             p: { xs: 4, md: 6 },
             background: 'white',
             position: 'relative',
             overflow: 'hidden',
-            minHeight: '500px',
-            display: 'flex',
-            flexDirection: 'column',
+            minHeight: '600px',
+              display: 'flex',
+              flexDirection: 'column',
             alignItems: 'center',
+            justifyContent: 'center',
             textAlign: 'center',
-            gap: 4
+            gap: 4,
+            borderRadius: '24px',
+            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.08)',
+            border: '1px solid rgba(0, 0, 0, 0.06)'
           }}
         >
           {/* Cancel Button */}
-          <Box sx={{ 
-            position: 'absolute',
-            top: 24,
-            right: 24
-          }}>
-            <IconButton
-              onClick={handleCancelProcessing}
-              disabled={isCancelling}
-              sx={{
-                color: 'rgba(239, 83, 80, 0.8)',
-                '&:hover': {
-                  backgroundColor: 'rgba(239, 83, 80, 0.04)'
-                }
-              }}
-            >
-              {isCancelling ? (
-                <CircularProgress size={20} sx={{ color: 'rgba(239, 83, 80, 0.8)' }} />
-              ) : (
-                <CloseIcon />
-              )}
-            </IconButton>
-          </Box>
+          <IconButton
+            onClick={handleCancelProcessing}
+            disabled={isCancelling}
+            sx={{
+              position: 'absolute',
+              top: 16,
+              right: 16,
+              width: 36,
+              height: 36,
+              backgroundColor: 'white',
+              border: '1px solid rgba(0, 0, 0, 0.08)',
+              boxShadow: '0 2px 8px rgba(0, 0, 0, 0.05)',
+              color: 'rgba(0, 0, 0, 0.5)',
+              '&:hover': {
+                backgroundColor: '#FEF2F2',
+                color: '#EF4444',
+                borderColor: '#FEE2E2',
+              },
+              transition: 'all 0.2s ease',
+              zIndex: 10
+            }}
+          >
+            {isCancelling ? (
+              <CircularProgress size={16} sx={{ color: 'rgba(0, 0, 0, 0.4)' }} />
+            ) : (
+              <CloseIcon sx={{ fontSize: 16 }} />
+            )}
+          </IconButton>
 
           {/* Progress Circle */}
-          <Box sx={{ 
-            width: { xs: '120px', md: '160px' },
-            height: { xs: '120px', md: '160px' },
-            position: 'relative',
-            mt: 4
-          }}>
-            <Box
-              sx={{
-                position: 'absolute',
-                top: '50%',
-                left: '50%',
-                width: '100%',
-                height: '100%',
-                borderRadius: '50%',
-                background: `conic-gradient(from 0deg, 
-                  #0984E3 0%, 
-                  #0984E3 ${progress}%, 
-                  #E8F4FF ${progress}%, 
-                  #E8F4FF 100%
-                )`,
-                transform: 'translate(-50%, -50%) rotate(-90deg)',
-                '&::before': {
-                  content: '""',
-                  position: 'absolute',
-                  inset: '8px',
-                  borderRadius: '50%',
-                  background: 'white'
+                <Box
+                  sx={{
+                    position: 'relative',
+              width: { xs: '240px', md: '280px' },
+              height: { xs: '240px', md: '280px' },
+                    display: 'flex',
+                    alignItems: 'center',
+              justifyContent: 'center',
+              mt: 2,
+              animation: 'floatContainer 6s ease-in-out infinite',
+              '@keyframes floatContainer': {
+                '0%, 100%': {
+                  transform: 'translateY(0px) scale(1)',
+                },
+                '50%': {
+                  transform: 'translateY(-10px) scale(1.02)',
+                },
+              }
+            }}
+          >
+            {/* Background Glow */}
+                  <Box
+                    sx={{
+                        position: 'absolute',
+                width: '180%',
+                height: '180%',
+                background: `radial-gradient(circle, rgba(9, 132, 227, 0.12) 0%, rgba(116, 185, 255, 0.08) 40%, transparent 70%)`,
+                animation: 'glowPulse 4s ease-in-out infinite',
+                '@keyframes glowPulse': {
+                  '0%, 100%': {
+                    transform: 'scale(0.8) rotate(0deg)',
+                    opacity: 0.3,
+                  },
+                  '50%': {
+                    transform: 'scale(1.2) rotate(180deg)',
+                    opacity: 0.5,
+                  }
                 }
               }}
             />
+            
+            {/* Progress Circle with Gradient */}
+            <Box sx={{ position: 'relative', width: '100%', height: '100%' }}>
+              <svg width="100%" height="100%" viewBox="0 0 100 100" style={{ transform: 'rotate(-90deg)' }}>
+                <defs>
+                  <linearGradient id="circleGradient" gradientTransform="rotate(0)">
+                    <stop offset="0%" stopColor="#0984E3">
+                      <animate
+                        attributeName="stop-color"
+                        values="#0984E3; #74B9FF; #4FB7FF; #0984E3"
+                        dur="4s"
+                        repeatCount="indefinite"
+                      />
+                    </stop>
+                    <stop offset="50%" stopColor="#4FB7FF">
+                      <animate
+                        attributeName="stop-color"
+                        values="#4FB7FF; #0984E3; #74B9FF; #4FB7FF"
+                        dur="4s"
+                        repeatCount="indefinite"
+                      />
+                    </stop>
+                    <stop offset="100%" stopColor="#74B9FF">
+                      <animate
+                        attributeName="stop-color"
+                        values="#74B9FF; #4FB7FF; #0984E3; #74B9FF"
+                        dur="4s"
+                        repeatCount="indefinite"
+                      />
+                    </stop>
+                  </linearGradient>
+                  <filter id="glow">
+                    <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
+                    <feMerge>
+                      <feMergeNode in="coloredBlur"/>
+                      <feMergeNode in="SourceGraphic"/>
+                    </feMerge>
+                  </filter>
+                </defs>
+                <circle
+                  cx="50"
+                  cy="50"
+                  r="45"
+                  fill="none"
+                  stroke="url(#circleGradient)"
+                  strokeWidth="3"
+                  strokeLinecap="round"
+                  strokeDasharray={`${displayProgress * 2.83}, 283`}
+                  filter="url(#glow)"
+                  style={{
+                    transition: 'stroke-dasharray 0.3s ease'
+                  }}
+                >
+                  <animateTransform
+                    attributeName="gradientTransform"
+                    attributeType="XML"
+                    type="rotate"
+                    from="0 50 50"
+                    to="360 50 50"
+                    dur="8s"
+                    repeatCount="indefinite"
+                  />
+                </circle>
+              </svg>
+                  </Box>
+
+            {/* Progress Text */}
             <Box
               sx={{
                 position: 'absolute',
-                top: '50%',
-                left: '50%',
-                transform: 'translate(-50%, -50%)',
-                textAlign: 'center',
-                zIndex: 1
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: 0.5,
+                animation: 'textFloat 3s ease-in-out infinite',
+                '@keyframes textFloat': {
+                  '0%, 100%': {
+                    transform: 'translateY(0px) scale(1)',
+                    filter: 'brightness(1)',
+                  },
+                  '50%': {
+                    transform: 'translateY(-5px) scale(1.02)',
+                    filter: 'brightness(1.1)',
+                  }
+                }
               }}
             >
+              <Box sx={{ position: 'relative' }}>
+                    <Typography
+                  variant="h1"
+                      sx={{
+                    fontWeight: 600,
+                    fontSize: { xs: '3rem', md: '3.5rem' },
+                    background: 'linear-gradient(135deg, #0984E3 0%, #74B9FF 100%)',
+                    WebkitBackgroundClip: 'text',
+                    WebkitTextFillColor: 'transparent',
+                        fontFamily: 'monospace',
+                    letterSpacing: '-0.05em',
+                    lineHeight: 1,
+                    mb: 0.5,
+                    animation: 'numberPulse 2s ease-in-out infinite',
+                    '@keyframes numberPulse': {
+                      '0%, 100%': {
+                        transform: 'scale(1)',
+                        filter: 'brightness(1)',
+                      },
+                      '50%': {
+                        transform: 'scale(1.05)',
+                        filter: 'brightness(1.2)',
+                      }
+                    }
+                  }}
+                >
+                  {displayProgress}
+                    </Typography>
+                <Typography
+                  variant="h4"
+                      sx={{
+                    fontWeight: 600,
+                    fontSize: { xs: '1.25rem', md: '1.5rem' },
+                    background: 'linear-gradient(135deg, #0984E3 0%, #74B9FF 100%)',
+                    WebkitBackgroundClip: 'text',
+                    WebkitTextFillColor: 'transparent',
+                    opacity: 0.7,
+                    fontFamily: 'monospace',
+                    letterSpacing: '-0.05em',
+                    position: 'absolute',
+                    right: -16,
+                    top: 8,
+                    animation: 'percentFloat 2s ease-in-out infinite',
+                    '@keyframes percentFloat': {
+                      '0%, 100%': {
+                        transform: 'translateY(0px) rotate(0deg)',
+                      },
+                      '50%': {
+                        transform: 'translateY(-3px) rotate(5deg)',
+                      }
+                    }
+                  }}
+                >
+                  %
+                </Typography>
+                    </Box>
               <Typography
-                variant="h4"
-                sx={{
-                  fontWeight: 600,
-                  color: '#0984E3',
-                  fontSize: { xs: '1.75rem', md: '2rem' }
+                variant="body1"
+                    sx={{
+                  color: 'rgba(0, 0, 0, 0.4)',
+                  fontSize: '0.875rem',
+                  letterSpacing: '0.1em',
+                  textTransform: 'uppercase',
+                  fontWeight: 500,
+                  animation: 'processingText 3s ease-in-out infinite',
+                  '@keyframes processingText': {
+                    '0%, 100%': {
+                      opacity: 0.4,
+                      letterSpacing: '0.1em',
+                    },
+                    '50%': {
+                      opacity: 0.8,
+                      letterSpacing: '0.15em',
+                    }
+                  }
                 }}
               >
-                {progress}%
+                Processing
               </Typography>
-            </Box>
+                </Box>
           </Box>
 
           {/* Status Text */}
-          <Box sx={{ mb: 2 }}>
-            <Typography variant="h5" sx={{ fontWeight: 600, mb: 1 }}>
-              Processing Files
-            </Typography>
-            <Typography variant="body1" color="text.secondary">
-              {currentStage}
-            </Typography>
-          </Box>
-
-          {/* Stages Timeline */}
-          <Box sx={{ 
-            width: '100%',
-            maxWidth: '400px'
-          }}>
-            {getCurrentAndUpcomingStages().map(([stage, stageProgress], index) => (
-              <motion.div
-                key={stage}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: index * 0.1 }}
-              >
-                <Box
-                  sx={{
-                    p: 2,
-                    mb: 1.5,
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 2
-                  }}
-                >
-                  <Box
-                    sx={{
-                      width: 24,
-                      height: 24,
-                      borderRadius: '50%',
-                      backgroundColor: progress >= stageProgress ? 
-                        '#0984E3' : 
-                        'rgba(0, 0, 0, 0.04)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      color: 'white'
-                    }}
-                  >
-                    {progress >= stageProgress ? (
-                      <CheckCircleIcon sx={{ fontSize: 16 }} />
-                    ) : (
-                      <CircularProgress 
-                        size={14} 
-                        thickness={6}
-                        sx={{ color: 'rgba(0, 0, 0, 0.2)' }} 
-                      />
-                    )}
-                  </Box>
-                  <Box sx={{ flex: 1 }}>
-                    <Typography
-                      variant="body2"
-                      sx={{
-                        color: progress >= stageProgress ? 
-                          'text.primary' : 
-                          'text.secondary',
-                        fontWeight: progress >= stageProgress ? 500 : 400,
-                        mb: 0.5
-                      }}
-                    >
-                      {stage}
-                    </Typography>
-                    <LinearProgress
-                      variant="determinate"
-                      value={progress >= stageProgress ? 100 : 0}
-                      sx={{
-                        height: 2,
-                        borderRadius: 1,
-                        backgroundColor: 'rgba(0, 0, 0, 0.04)',
-                        '& .MuiLinearProgress-bar': {
-                          backgroundColor: '#0984E3'
-                        }
-                      }}
-                    />
-                  </Box>
-                </Box>
-              </motion.div>
-            ))}
-          </Box>
-
-          {/* Info Message */}
-          <Box 
-            sx={{ 
-              mt: 'auto',
-              pt: 2,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 1,
-              backgroundColor: 'rgba(25, 118, 210, 0.04)',
-              borderRadius: '12px',
-              py: 1.5,
-              px: 3
+          <Box
+            sx={{
+              maxWidth: '400px', 
+              zIndex: 1
             }}
           >
-            <InfoIcon sx={{ fontSize: 20, color: '#0984E3' }} />
-            <Typography variant="body2" color="text.secondary">
-              Please keep this window open while processing
+            <Typography 
+              variant="h4" 
+              sx={{ 
+                fontWeight: 600,
+                fontSize: { xs: '1.5rem', md: '1.75rem' },
+                color: '#1E293B',
+                mb: 2,
+                lineHeight: 1.3
+              }}
+            >
+              Processing Files
+            </Typography>
+            <Typography 
+              variant="body1"
+              sx={{ 
+                fontSize: '0.875rem',
+                color: 'rgba(0, 0, 0, 0.6)',
+                lineHeight: 1.6,
+                maxWidth: '320px',
+                mx: 'auto'
+              }}
+            >
+              {processingStage}
             </Typography>
           </Box>
+
+          {/* Warning Message */}
+          <Box 
+            sx={{ 
+                display: 'flex',
+                alignItems: 'center',
+                gap: 1.5,
+                py: 1.5,
+              px: 2.5,
+              borderRadius: '12px',
+              backgroundColor: 'rgba(239, 68, 68, 0.04)',
+              border: '1px solid rgba(239, 68, 68, 0.1)',
+              maxWidth: 'fit-content',
+              zIndex: 1
+            }}
+          >
+            <InfoIcon 
+                sx={{
+                fontSize: 18, 
+                color: '#EF4444',
+                opacity: 0.8
+              }} 
+            />
+            <Typography 
+              variant="body2"
+              sx={{ 
+                fontSize: '0.75rem',
+                color: 'rgba(239, 68, 68, 0.8)',
+                fontWeight: 500
+              }}
+            >
+              Please don't leave this page during processing
+            </Typography>
+          </Box>
+
+          {/* Processing Time Notice */}
+          <Typography
+            variant="caption"
+            sx={{
+              position: 'absolute',
+              bottom: 16,
+              color: 'rgba(0, 0, 0, 0.4)',
+              fontSize: '0.75rem',
+              letterSpacing: '0.02em',
+              textAlign: 'center',
+              width: '100%',
+              left: 0,
+              padding: '0 24px'
+            }}
+          >
+            Processing may take a few minutes depending on file size
+          </Typography>
         </StyledPaper>
       </motion.div>
     );
   };
 
-  // Reset all states
+  // Add resetStates function
   const resetStates = () => {
     setProcessSuccess(false);
     setUploadedFiles([]);
@@ -1655,11 +2113,214 @@ function Processing() {
     setProcessingStage('');
     setApiError(null);
     setIsProcessing(false);
+    setHasDetections(null);
     if (statusCheckInterval) {
       clearInterval(statusCheckInterval);
       setStatusCheckInterval(null);
     }
+    // Reset progress animation states
+    setDisplayProgress(0);
+    progressRef.current = 0;
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current);
+    }
   };
+
+  // Add ESC key handler for cancelling
+  React.useEffect(() => {
+    const handleEscKey = (event) => {
+      if (event.key === 'Escape' && isProcessing && !isCancelling) {
+        handleCancelProcessing();
+      }
+    };
+
+    window.addEventListener('keydown', handleEscKey);
+    return () => {
+      window.removeEventListener('keydown', handleEscKey);
+    };
+  }, [isProcessing, isCancelling]);
+
+  // Add cleanup effect for page unload
+  React.useEffect(() => {
+    const handleBeforeUnload = async () => {
+      if (taskId) {
+        try {
+          await fetch(`${API_CONFIG.baseUrl}${API_CONFIG.endpoints.cancel}/${taskId}`, {
+            method: 'POST',
+            keepalive: true // Ensures the request completes even if the page is closing
+          });
+        } catch (error) {
+          console.error('Failed to cancel task on page unload:', error);
+        }
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      // Also cancel task when component unmounts
+      if (taskId) {
+        fetch(`${API_CONFIG.baseUrl}${API_CONFIG.endpoints.cancel}/${taskId}`, {
+          method: 'POST'
+        }).catch(error => {
+          console.error('Failed to cancel task on unmount:', error);
+        });
+      }
+    };
+  }, [taskId]);
+
+  // Add cleanup effect for unmounting
+  React.useEffect(() => {
+    return () => {
+      // Cleanup on unmount
+      if (statusCheckInterval) {
+        clearInterval(statusCheckInterval);
+      }
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
+      // Cancel task if it's still running
+      if (taskId && isProcessing) {
+        fetch(`${API_CONFIG.baseUrl}${API_CONFIG.endpoints.cancel}/${taskId}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        }).catch(error => {
+          console.error('Failed to cancel task on unmount:', error);
+        });
+      }
+    };
+  }, [taskId, isProcessing]);
+
+  // Add server status fetch function
+  const fetchServerStatus = async () => {
+    try {
+      const response = await fetch(`${API_CONFIG.baseUrl}${API_CONFIG.endpoints.serverStatus}`);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      
+      // Validate and format the data before setting state
+      const formattedStatus = {
+        total_tasks_processed: parseInt(data.total_tasks_processed) || 0,
+        total_files_processed: parseInt(data.total_files_processed) || 0,
+        failed_tasks: parseInt(data.failed_tasks) || 0,
+        cancelled_tasks: parseInt(data.cancelled_tasks) || 0,
+        current_tasks: parseInt(data.current_tasks) || 0,
+        queued_tasks: parseInt(data.queued_tasks) || 0,
+        uptime_seconds: parseInt(data.uptime_seconds) || 0,
+        max_concurrent_tasks: parseInt(data.max_concurrent_tasks) || 0,
+        max_queue_size: parseInt(data.max_queue_size) || 0,
+        cpu_usage_percent: parseFloat(data.cpu_usage_percent) || 0
+      };
+
+      setServerStatus(formattedStatus);
+      setStatusError(null);
+    } catch (error) {
+      console.error('Server status error:', error);
+      setStatusError(error.message || 'Unable to fetch server status');
+      // Keep the previous state on error
+    }
+  };
+
+  // Add effect to fetch server status periodically
+  React.useEffect(() => {
+    fetchServerStatus();
+    const interval = setInterval(fetchServerStatus, 5000); // Update every 5 seconds
+    return () => clearInterval(interval);
+  }, []);
+
+  // Add server status component
+  const renderServerStatus = () => (
+    <ServerStatusContainer>
+      <Typography 
+        variant="subtitle2" 
+        sx={{ 
+          fontWeight: 600,
+          color: 'text.secondary',
+          fontSize: '0.75rem',
+          letterSpacing: '0.1em',
+          textTransform: 'uppercase',
+          mb: 1
+        }}
+      >
+        Server Status
+      </Typography>
+      
+      <StatusCard>
+        <StatusIcon color="9, 132, 227">
+          <motion.div
+            animate={{ rotate: [0, 360] }}
+            transition={{ duration: 4, repeat: Infinity, ease: "linear" }}
+          >
+            <SettingsIcon />
+          </motion.div>
+        </StatusIcon>
+        <Box sx={{ flex: 1 }}>
+          <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 500 }}>
+            CPU Usage
+          </Typography>
+          <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#0984E3' }}>
+            {(serverStatus.cpu_usage_percent || 0).toFixed(1)}%
+          </Typography>
+        </Box>
+      </StatusCard>
+
+      <StatusCard>
+        <StatusIcon color="46, 204, 113">
+          <QueueIcon />
+        </StatusIcon>
+        <Box sx={{ flex: 1 }}>
+          <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 500 }}>
+            Tasks in Queue
+          </Typography>
+          <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#2ECC71' }}>
+            {serverStatus.queued_tasks || 0} / {serverStatus.max_queue_size || 0}
+          </Typography>
+        </Box>
+      </StatusCard>
+
+      <StatusCard>
+        <StatusIcon color="155, 89, 182">
+          <motion.div
+            animate={{ scale: [1, 1.1, 1] }}
+            transition={{ duration: 2, repeat: Infinity }}
+          >
+            <FolderIcon />
+          </motion.div>
+        </StatusIcon>
+        <Box sx={{ flex: 1 }}>
+          <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 500 }}>
+            Files Processed
+          </Typography>
+          <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#9B59B6' }}>
+            {(serverStatus.total_files_processed || 0).toLocaleString()}
+          </Typography>
+        </Box>
+      </StatusCard>
+
+      {statusError && (
+        <Typography 
+          variant="caption" 
+          color="error" 
+          sx={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            gap: 0.5,
+            opacity: 0.8 
+          }}
+        >
+          <ErrorOutlineIcon sx={{ fontSize: 14 }} />
+          {statusError}
+        </Typography>
+      )}
+    </ServerStatusContainer>
+  );
 
   return (
     <Container maxWidth="lg">
@@ -1717,20 +2378,53 @@ function Processing() {
             </motion.div>
           </Box>
 
+          <AnimatePresence mode="wait">
           {!isProcessing && !processSuccess ? (
+              <motion.div
+                key="setup"
+                initial={{ opacity: 0, scale: 0.98 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                transition={{ 
+                  duration: 0.4,
+                  ease: "easeOut"
+                }}
+              >
             <Grid container spacing={4}>
               <Grid item xs={12} md={4}>
+                    <motion.div
+                      initial={{ opacity: 0, x: -20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: 0.2, duration: 0.4 }}
+                    >
                 <StyledPaper 
                   sx={{ 
                     background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.95) 0%, rgba(255, 255, 255, 0.85) 100%)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    height: '100%',
+                    minHeight: 'unset',
+                    '& .MuiStepLabel-root': {  // Reduce spacing in stepper
+                      py: 1,  // Reduced padding
+                    },
+                    '& .MuiStepContent-root': {
+                      ml: 2.5,  // Reduced margin
+                    }
                   }}
                 >
+                  <Box sx={{ flex: '0 0 auto' }}>
                   <Stepper 
                     activeStep={activeStep} 
                     orientation="vertical"
                     sx={{
                       '.MuiStepConnector-line': {
-                        minHeight: 40,
+                          minHeight: 24,  // Further reduced
+                        },
+                        '& .MuiStepLabel-label': {  // Reduce text size
+                          fontSize: '0.9rem',
+                        },
+                        '& .MuiStepLabel-iconContainer': {
+                          pr: 1.5,  // Reduced padding
                       }
                     }}
                   >
@@ -1744,11 +2438,13 @@ function Processing() {
                           <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
                             {step.label}
                           </Typography>
+                                  <AnimatePresence mode="wait">
                           {activeStep === index && (
                             <motion.div
                               initial={{ opacity: 0, y: -5 }}
                               animate={{ opacity: 1, y: 0 }}
-                              transition={{ duration: 0.2 }}
+                                      exit={{ opacity: 0, y: 5 }}
+                                      transition={{ duration: 0.3 }}
                             >
                               <Typography 
                                 variant="body2" 
@@ -1762,33 +2458,56 @@ function Processing() {
                               </Typography>
                             </motion.div>
                           )}
+                                  </AnimatePresence>
                         </StepLabel>
                       </Step>
                     ))}
                   </Stepper>
+                  </Box>
+                  {renderServerStatus()}
                 </StyledPaper>
+                    </motion.div>
               </Grid>
               <Grid item xs={12} md={8}>
+                    <AnimatePresence mode="wait">
                 <motion.div
                   key={activeStep}
-                  initial={{ opacity: 0, x: 20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: -20 }}
-                  transition={{ duration: 0.3, ease: "easeOut" }}
+                        initial={{ opacity: 0, x: 20, scale: 0.98 }}
+                        animate={{ opacity: 1, x: 0, scale: 1 }}
+                        exit={{ opacity: 0, x: -20, scale: 0.98 }}
+                        transition={{ duration: 0.4, ease: "easeOut" }}
                 >
                   <StyledPaper>
                     {steps[activeStep].content}
                   </StyledPaper>
                 </motion.div>
+                    </AnimatePresence>
               </Grid>
             </Grid>
+              </motion.div>
           ) : isProcessing ? (
-            renderProcessingStatus()
+              <motion.div
+                key="processing"
+                initial={{ opacity: 0, scale: 0.98, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: -20 }}
+                transition={{ 
+                  duration: 0.5,
+                  ease: "easeOut"
+                }}
+              >
+                {renderProcessingStatus()}
+              </motion.div>
           ) : processSuccess ? (
             <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ duration: 0.6, ease: "easeOut" }}
+                key="success"
+                initial={{ opacity: 0, scale: 0.98, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: -20 }}
+                transition={{ 
+                  duration: 0.5,
+                  ease: "easeOut"
+                }}
             >
               <StyledPaper 
                 sx={{ 
@@ -1798,10 +2517,10 @@ function Processing() {
                 }}
               >
                 <motion.div
-                  initial={{ scale: 0.9, opacity: 0, y: 20 }}
-                  animate={{ scale: 1, opacity: 1, y: 0 }}
+                    initial={{ scale: 0.9, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
                   transition={{ 
-                    duration: 0.5,
+                      duration: 0.6,
                     delay: 0.2,
                     ease: "easeOut"
                   }}
@@ -1821,13 +2540,17 @@ function Processing() {
                         width: 100,
                         height: 100,
                         borderRadius: '30px',
-                        background: 'linear-gradient(135deg, #4CAF50 0%, #81C784 100%)',
+                          background: hasDetections 
+                            ? 'linear-gradient(135deg, #4CAF50 0%, #81C784 100%)'
+                            : 'linear-gradient(135deg, #FFA726 0%, #FFB74D 100%)',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
                         margin: '0 auto',
                         mb: 4,
-                        boxShadow: '0 12px 32px rgba(76, 175, 80, 0.2)',
+                          boxShadow: hasDetections
+                            ? '0 12px 32px rgba(76, 175, 80, 0.2)'
+                            : '0 12px 32px rgba(255, 167, 38, 0.2)',
                       }}
                     >
                       <motion.div
@@ -1840,12 +2563,21 @@ function Processing() {
                           delay: 0.5
                         }}
                       >
+                          {hasDetections ? (
                         <CheckCircleIcon 
                           sx={{ 
                             fontSize: 50,
                             color: 'white',
                           }} 
                         />
+                          ) : (
+                            <InfoIcon 
+                              sx={{ 
+                                fontSize: 50,
+                                color: 'white',
+                              }} 
+                            />
+                          )}
                       </motion.div>
                     </Box>
                   </motion.div>
@@ -1859,13 +2591,15 @@ function Processing() {
                       gutterBottom 
                       sx={{ 
                         fontWeight: 700,
-                        background: 'linear-gradient(45deg, #2D3436 30%, #636E72 90%)',
+                          background: hasDetections
+                            ? 'linear-gradient(45deg, #2D3436 30%, #636E72 90%)'
+                            : 'linear-gradient(45deg, #F39C12 30%, #F1C40F 90%)',
                         WebkitBackgroundClip: 'text',
                         WebkitTextFillColor: 'transparent',
                         mb: 2,
                       }}
                     >
-                      Success!
+                        {hasDetections ? 'Success!' : 'Processing Complete'}
                     </Typography>
                     <Typography 
                       variant="h6" 
@@ -1877,7 +2611,9 @@ function Processing() {
                         lineHeight: 1.6,
                       }}
                     >
-                      Your files have been successfully processed and are ready for download
+                        {hasDetections 
+                          ? 'Your files have been successfully processed and detections were found'
+                          : 'Your files have been processed, but no detections were found in the provided images'}
                     </Typography>
                     <Box
                       sx={{
@@ -1886,48 +2622,53 @@ function Processing() {
                         justifyContent: 'center',
                         gap: 1.5,
                         mb: 6,
-                        background: 'linear-gradient(135deg, rgba(9, 132, 227, 0.08) 0%, rgba(116, 185, 255, 0.08) 100%)',
+                          background: 'linear-gradient(135deg, rgba(9, 132, 227, 0.04) 0%, rgba(116, 185, 255, 0.04) 100%)',
                         backdropFilter: 'blur(10px)',
                         borderRadius: '12px',
-                        border: '1px solid rgba(9, 132, 227, 0.12)',
+                          border: '1px solid rgba(9, 132, 227, 0.1)',
                         py: 1.5,
                         px: 3,
                         maxWidth: 'fit-content',
                         mx: 'auto',
-                        boxShadow: '0 4px 12px rgba(9, 132, 227, 0.08)',
-                      }}
-                    >
-                      <Box
-                        sx={{
-                          width: 24,
-                          height: 24,
-                          borderRadius: '50%',
-                          backgroundColor: 'rgba(9, 132, 227, 0.12)',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          flexShrink: 0,
+                          animation: 'noticePulse 3s ease-in-out infinite',
+                          '@keyframes noticePulse': {
+                            '0%, 100%': {
+                              backgroundColor: 'rgba(9, 132, 227, 0.04)',
+                              borderColor: 'rgba(9, 132, 227, 0.1)',
+                            },
+                            '50%': {
+                              backgroundColor: 'rgba(9, 132, 227, 0.08)',
+                              borderColor: 'rgba(9, 132, 227, 0.15)',
+                            },
+                          }
                         }}
                       >
-                        <Typography
-                          sx={{
-                            fontSize: '14px',
+                        <InfoIcon 
+                        sx={{
+                            fontSize: 18,
                             color: '#0984E3',
-                            lineHeight: 1,
-                          }}
-                        >
-                          ℹ️
-                        </Typography>
-                      </Box>
+                            opacity: 0.8,
+                            animation: 'iconFloat 2s ease-in-out infinite',
+                            '@keyframes iconFloat': {
+                              '0%, 100%': {
+                                transform: 'translateY(0)',
+                              },
+                              '50%': {
+                                transform: 'translateY(-2px)',
+                              },
+                            }
+                          }} 
+                        />
                       <Typography
                         variant="body2"
                         sx={{
-                          color: '#0984E3',
-                          fontWeight: 300,
+                            color: 'rgba(9, 132, 227, 0.8)',
+                            fontWeight: 500,
                           letterSpacing: '0.01em',
+                            fontSize: '0.875rem'
                         }}
                       >
-                        Results will be expired in 2 hours
+                          Results will be available for 2 hours
                       </Typography>
                     </Box>
                   </motion.div>
@@ -1971,6 +2712,7 @@ function Processing() {
               </StyledPaper>
             </motion.div>
           ) : null}
+          </AnimatePresence>
         </motion.div>
       </Box>
     </Container>
