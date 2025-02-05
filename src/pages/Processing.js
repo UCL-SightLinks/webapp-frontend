@@ -396,6 +396,10 @@ const API_CONFIG = {
   }
 };
 
+const defaultHeaders = {
+  'Accept': 'application/json'
+};
+
 // Add keyframe animations
 const GlobalStyles = styled('style')({
   '& @keyframes tetromino1': {
@@ -548,25 +552,22 @@ function Processing() {
       formData.append('file', zipFile);
       
       // Convert parameters to the exact types expected by the API
-      formData.append('input_type', String(inputType === 'DigiMap' ? 0 : 1)); // Send as string "0" or "1"
-      formData.append('save_labeled_image', String(saveLabeledImages)); // Send as string "true" or "false"
-      formData.append('classification_threshold', String(0.35)); // Send as string "0.35"
-      formData.append('prediction_threshold', String(0.5)); // Send as string "0.5"
-      formData.append('yolo_model_type', 'n'); // Send as string "n"
-      formData.append('output_type', String(outputFormat === 'JSON' ? 0 : 1)); // Send as string "0" or "1"
+      formData.append('input_type', String(inputType === 'DigiMap' ? 0 : 1));
+      formData.append('save_labeled_image', String(saveLabeledImages));
+      formData.append('classification_threshold', String(0.35));
+      formData.append('prediction_threshold', String(0.5));
+      formData.append('yolo_model_type', 'n');
+      formData.append('output_type', String(outputFormat === 'JSON' ? 0 : 1));
 
-      // Debug log to verify files being sent
       console.log('Uploading files to API...');
       console.log('API URL:', `${API_CONFIG.baseUrl}${API_CONFIG.endpoints.webPredict}`);
-      console.log('Input Type:', inputType);
-      console.log('Files being sent:');
-      for (let pair of formData.entries()) {
-        console.log(pair[0], pair[1]);
-      }
 
       const response = await fetch(`${API_CONFIG.baseUrl}${API_CONFIG.endpoints.webPredict}`, {
         method: 'POST',
-        body: formData
+        body: formData,
+        mode: 'cors',
+        credentials: 'omit',
+        headers: defaultHeaders
       });
 
       const data = await response.json();
@@ -603,7 +604,13 @@ function Processing() {
 
     try {
       console.log('Checking status for task:', id);
-      const response = await fetch(`${API_CONFIG.baseUrl}${API_CONFIG.endpoints.status}/${id}`);
+      const response = await fetch(`${API_CONFIG.baseUrl}${API_CONFIG.endpoints.status}/${id}`, {
+        method: 'GET',
+        mode: 'cors',
+        credentials: 'omit',
+        headers: defaultHeaders
+      });
+
       const data = await response.json();
       console.log('Status response:', data);
 
@@ -694,8 +701,15 @@ function Processing() {
 
     try {
       console.log('Initiating download...');
-      console.log('Download URL:', `${API_CONFIG.baseUrl}${API_CONFIG.endpoints.download}/${downloadToken}`);
-      const response = await fetch(`${API_CONFIG.baseUrl}${API_CONFIG.endpoints.download}/${downloadToken}`);
+      const response = await fetch(`${API_CONFIG.baseUrl}${API_CONFIG.endpoints.download}/${downloadToken}`, {
+        method: 'GET',
+        mode: 'cors',
+        credentials: 'omit',
+        headers: {
+          ...defaultHeaders,
+          'Accept': 'application/zip'
+        }
+      });
 
       if (!response.ok) {
         console.error('Download failed:', response.status, response.statusText);
@@ -762,10 +776,12 @@ function Processing() {
       setIsCancelling(true);
       console.log('Cancelling task:', taskId);
       
-      // Send cancel request to API first
       const response = await fetch(`${API_CONFIG.baseUrl}${API_CONFIG.endpoints.cancel}/${taskId}`, {
         method: 'POST',
+        mode: 'cors',
+        credentials: 'omit',
         headers: {
+          ...defaultHeaders,
           'Content-Type': 'application/json'
         }
       });
@@ -2184,7 +2200,10 @@ function Processing() {
       if (taskId && isProcessing) {
         fetch(`${API_CONFIG.baseUrl}${API_CONFIG.endpoints.cancel}/${taskId}`, {
           method: 'POST',
+          mode: 'cors',
+          credentials: 'omit',
           headers: {
+            ...defaultHeaders,
             'Content-Type': 'application/json'
           }
         }).catch(error => {
@@ -2197,7 +2216,12 @@ function Processing() {
   // Add server status fetch function
   const fetchServerStatus = async () => {
     try {
-      const response = await fetch(`${API_CONFIG.baseUrl}${API_CONFIG.endpoints.serverStatus}`);
+      const response = await fetch(`${API_CONFIG.baseUrl}${API_CONFIG.endpoints.serverStatus}`, {
+        method: 'GET',
+        mode: 'cors',
+        credentials: 'omit',
+        headers: defaultHeaders
+      });
       
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
