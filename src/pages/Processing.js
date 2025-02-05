@@ -627,10 +627,22 @@ function Processing() {
         throw new Error(data.error || 'Failed to check status');
       }
 
-      // Update progress and stage
-      const newProgress = data.percentage || 0;
+      // Update progress and stage with proper fallbacks
+      const newProgress = typeof data.percentage === 'number' ? data.percentage : 0;
       setProgress(newProgress);
-      setProcessingStage(data.log || 'Processing...');
+
+      // Better status message handling with fallbacks
+      let statusMessage = 'Processing...';
+      if (data.log) {
+        statusMessage = data.log;
+      } else if (newProgress === 0) {
+        statusMessage = 'Task queued, waiting to start...';
+      } else if (newProgress === 100) {
+        statusMessage = 'Processing complete';
+      } else if (newProgress > 0) {
+        statusMessage = `Processing: ${newProgress}% complete`;
+      }
+      setProcessingStage(statusMessage);
 
       // Handle error in response
       if (data.error) {
@@ -638,7 +650,7 @@ function Processing() {
       }
 
       // Update has_detections state when available
-      if (data.has_detections !== undefined) {
+      if (typeof data.has_detections === 'boolean') {
         setHasDetections(data.has_detections);
       }
 
@@ -647,6 +659,7 @@ function Processing() {
         console.log('Processing complete, download token:', data.download_token);
         // Ensure we reach 100% before completing
         setProgress(100);
+        setProcessingStage('Processing complete');
         
         // Wait for progress animation to complete
         setTimeout(() => {
@@ -671,6 +684,8 @@ function Processing() {
       }
       setIsProcessing(false);
       setProcessSuccess(false);
+      // Set a clear error message in the processing stage
+      setProcessingStage('Error: ' + error.message);
     }
   };
 
@@ -679,8 +694,10 @@ function Processing() {
       clearInterval(statusCheckInterval);
     }
     
-    // Reset cancelling state when starting new check
+    // Reset states when starting new check
     setIsCancelling(false);
+    setProcessingStage('Initializing task...');
+    setProgress(0);
     
     // Immediately check status
     checkProcessingStatus(id);
@@ -2240,7 +2257,7 @@ function Processing() {
         uptime_seconds: parseInt(data.uptime_seconds) || 0,
         max_concurrent_tasks: parseInt(data.max_concurrent_tasks) || 0,
         max_queue_size: parseInt(data.max_queue_size) || 0,
-        cpu_usage_percent: parseFloat(data.cpu_usage_percent) || 0
+        cpu_usage_percent: Math.min(Math.max(parseFloat(data.cpu_usage_percent) || 0, 0), 100) // Clamp between 0-100
       };
 
       setServerStatus(formattedStatus);
@@ -2277,7 +2294,9 @@ function Processing() {
       </Typography>
       
       <StatusCard>
-        <StatusIcon color="9, 132, 227">
+        <StatusIcon color={serverStatus.cpu_usage_percent > 80 ? '239, 68, 68' : 
+                         serverStatus.cpu_usage_percent > 50 ? '245, 158, 11' : 
+                         '9, 132, 227'}>
           <motion.div
             animate={{ rotate: [0, 360] }}
             transition={{ duration: 4, repeat: Infinity, ease: "linear" }}
@@ -2289,8 +2308,16 @@ function Processing() {
           <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 500 }}>
             CPU Usage
           </Typography>
-          <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#0984E3' }}>
-            {(serverStatus.cpu_usage_percent || 0).toFixed(1)}%
+          <Typography 
+            variant="subtitle2" 
+            sx={{ 
+              fontWeight: 600, 
+              color: serverStatus.cpu_usage_percent > 80 ? '#EF4444' : 
+                     serverStatus.cpu_usage_percent > 50 ? '#F59E0B' : 
+                     '#0984E3'
+            }}
+          >
+            {Math.round(serverStatus.cpu_usage_percent)}%
           </Typography>
         </Box>
       </StatusCard>
