@@ -2,6 +2,10 @@
   "platform": {
     "apiRuntime": "node:18"
   },
+  "globalHeaders": {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET, POST, PUT"
+  },
   "buildProperties": {
     "skipBuildDuringDeploy": false,
     "apiBuildCommand": "npm run build",
