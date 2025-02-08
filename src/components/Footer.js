@@ -135,7 +135,7 @@ function Footer() {
           }}
         >
           <Typography variant="body2" color="text.secondary">
-            © 2024 SightLink. All rights reserved.
+            © 2025 SightLink. All rights reserved.
           </Typography>
           <Box sx={{ display: 'flex', gap: 3 }}>
             <FooterLink variant="body2" href="#">

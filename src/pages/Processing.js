@@ -69,6 +69,8 @@ const StyledStepIcon = styled('div')(({ theme, completed, active }) => ({
     ? '0 4px 12px rgba(9, 132, 227, 0.2)'
     : 'none',
   transform: active ? 'scale(1.05)' : 'scale(1)',
+  margin: '2px',  // Add margin to prevent cutoff
+  flexShrink: 0,  // Prevent icon from shrinking
 }));
 
 const StyledToggleButton = styled(ToggleButton)(({ theme }) => ({
@@ -172,12 +174,12 @@ const ObjectIcon = styled(Box)(({ theme, selected }) => ({
 }));
 
 const FileCard = styled(Paper)(({ theme }) => ({
-  padding: theme.spacing(2),
-  marginBottom: theme.spacing(1.5),
+  padding: theme.spacing(1.5),  // Reduced from 2
+  marginBottom: theme.spacing(1),  // Reduced from 1.5
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'space-between',
-  borderRadius: '16px',
+  borderRadius: '12px',  // Reduced from 16px
   border: '1px solid rgba(0, 0, 0, 0.08)',
   backgroundColor: 'rgba(255, 255, 255, 0.8)',
   transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
@@ -505,7 +507,6 @@ function Processing() {
   const [hasDetections, setHasDetections] = useState(null);
   const [serverStatus, setServerStatus] = useState({
     total_tasks_processed: 0,
-    total_files_processed: 0,
     failed_tasks: 0,
     cancelled_tasks: 0,
     current_tasks: 0,
@@ -602,17 +603,23 @@ function Processing() {
       return;
     }
 
+    // Prevent status checks if already cancelled or completed
+    if (isCancelling || processSuccess) {
+      console.log('Skipping status check - task is cancelled or completed');
+      return;
+    }
+
     try {
       console.log('Checking status for task:', id);
-      const response = await fetch(`${API_CONFIG.baseUrl}${API_CONFIG.endpoints.status}/${id}`, {
+      const statusResponse = await fetch(`${API_CONFIG.baseUrl}${API_CONFIG.endpoints.status}/${id}`, {
         method: 'GET',
         mode: 'cors',
         credentials: 'omit',
         headers: defaultHeaders
       });
 
-      const data = await response.json();
-      console.log('Status response:', data);
+      const statusData = await statusResponse.json();
+      console.log('Status response:', statusData);
 
       // Only ignore updates if explicitly cancelled
       if (isCancelling) {
@@ -620,21 +627,58 @@ function Processing() {
         return;
       }
 
-      if (!response.ok) {
-        if (response.status === 404) {
-          throw new Error('Task not found');
+      if (!statusResponse.ok) {
+        if (statusResponse.status === 404) {
+          // Don't throw error for 404, just log it and continue
+          console.log('Task not found in status check, might be temporary');
+          return;
         }
-        throw new Error(data.error || 'Failed to check status');
+        throw new Error(statusData.error || 'Failed to check status');
       }
 
       // Update progress and stage with proper fallbacks
-      const newProgress = typeof data.percentage === 'number' ? data.percentage : 0;
+      const newProgress = typeof statusData.progress === 'number' ? statusData.progress : 
+                         typeof statusData.percentage === 'number' ? statusData.percentage : 
+                         progress;
       setProgress(newProgress);
 
+      // Handle completed status first
+      if (statusData.status === 'completed') {
+        console.log('Task marked as completed');
+        setProgress(100);
+        setProcessingStage('Processing complete');
+        
+        // Clear the status check interval
+        if (statusCheckInterval) {
+          clearInterval(statusCheckInterval);
+          setStatusCheckInterval(null);
+        }
+
+        // If we have a download token, use it
+        if (statusData.download_token) {
+          setDownloadToken(statusData.download_token);
+        }
+
+        // Mark as success even if there's a session_id error
+        setProcessSuccess(true);
+        setIsProcessing(false);
+        return;
+      }
+
       // Better status message handling with fallbacks
-      let statusMessage = 'Processing...';
-      if (data.log) {
-        statusMessage = data.log;
+      let statusMessage = processingStage || `Processing: ${newProgress}% complete`;  // Default to last known status with progress
+      
+      if (statusData.status === 'unknown' || statusData.log?.toLowerCase() === 'unknown') {
+        // Keep both the last known status message and progress percentage
+        console.log('Received unknown status, maintaining last known status:', processingStage);
+        // Keep the existing status message which includes progress
+      } else if (statusData.stage) {
+        // Use the stage message from the API if available
+        statusMessage = statusData.stage;
+      } else if (statusData.status === 'queued' && typeof statusData.queue_position === 'number') {
+        statusMessage = `Waiting in queue (position ${statusData.queue_position})`;
+      } else if (statusData.log && statusData.log.toLowerCase() !== 'unknown') {
+        statusMessage = statusData.log;
       } else if (newProgress === 0) {
         statusMessage = 'Task queued, waiting to start...';
       } else if (newProgress === 100) {
@@ -642,21 +686,31 @@ function Processing() {
       } else if (newProgress > 0) {
         statusMessage = `Processing: ${newProgress}% complete`;
       }
-      setProcessingStage(statusMessage);
+
+      // Handle cancelled state from API
+      if (statusData.is_cancelled) {
+        setIsCancelling(true);
+        throw new Error('Task was cancelled');
+      }
+      
+      // Only update the processing stage if we have a meaningful message
+      if (statusMessage && statusMessage.toLowerCase() !== 'unknown') {
+        setProcessingStage(statusMessage);
+      }
 
       // Handle error in response
-      if (data.error) {
-        throw new Error(data.error);
+      if (statusData.error && statusData.status !== 'completed') {  // Ignore errors if task is completed
+        throw new Error(statusData.error);
       }
 
       // Update has_detections state when available
-      if (typeof data.has_detections === 'boolean') {
-        setHasDetections(data.has_detections);
+      if (typeof statusData.has_detections === 'boolean') {
+        setHasDetections(statusData.has_detections);
       }
 
       // Handle download token
-      if (data.download_token) {
-        console.log('Processing complete, download token:', data.download_token);
+      if (statusData.download_token) {
+        console.log('Processing complete, download token:', statusData.download_token);
         // Ensure we reach 100% before completing
         setProgress(100);
         setProcessingStage('Processing complete');
@@ -671,21 +725,24 @@ function Processing() {
             }
             setProcessSuccess(true);
             setIsProcessing(false);
-            setDownloadToken(data.download_token);
+            setDownloadToken(statusData.download_token);
           }
         }, 1000);
       }
     } catch (error) {
       console.error('Status check error:', error);
-      setApiError(error.message);
-      if (statusCheckInterval) {
-        clearInterval(statusCheckInterval);
-        setStatusCheckInterval(null);
+      // Only set error if it's not a cancellation
+      if (!isCancelling) {
+        setApiError(error.message);
+        if (statusCheckInterval) {
+          clearInterval(statusCheckInterval);
+          setStatusCheckInterval(null);
+        }
+        setIsProcessing(false);
+        setProcessSuccess(false);
+        // Set a clear error message in the processing stage
+        setProcessingStage('Error: ' + error.message);
       }
-      setIsProcessing(false);
-      setProcessSuccess(false);
-      // Set a clear error message in the processing stage
-      setProcessingStage('Error: ' + error.message);
     }
   };
 
@@ -1254,133 +1311,29 @@ function Processing() {
             <Typography color="text.secondary" sx={{ mb: 4, fontSize: '1rem' }}>
               Drag and drop your files or click to browse
             </Typography>
-            <Typography 
-              variant="body2" 
-              color="text.secondary" 
-              sx={{ 
-                mb: 3, 
-                fontSize: '0.875rem',
-                backgroundColor: 'rgba(9, 132, 227, 0.08)',
-                px: 2,
-                py: 1.5,
-                borderRadius: '10px',
-                lineHeight: 1.5
-              }}
-            >
-              {inputType === 'DigiMap' 
-                ? 'Upload the complete ZIP file exported from DigiMap containing all necessary data'
-                : 'Upload matching image and label files (same filename) or a ZIP containing both files'}
-            </Typography>
+            {!uploadedFiles.length && (
+              <Typography 
+                variant="body2" 
+                color="text.secondary" 
+                sx={{ 
+                  mb: 3, 
+                  fontSize: '0.875rem',
+                  backgroundColor: 'rgba(9, 132, 227, 0.08)',
+                  px: 2,
+                  py: 1.5,
+                  borderRadius: '10px',
+                  lineHeight: 1.5
+                }}
+              >
+                {inputType === 'DigiMap' 
+                  ? 'Upload the complete ZIP file exported from DigiMap containing all necessary data'
+                  : 'Upload matching image and label files (same filename) or a ZIP containing both files'}
+              </Typography>
+            )}
 
-            <StyledPaper
-              {...getRootProps()}
-              sx={{
-                cursor: 'pointer',
-                textAlign: 'center',
-                py: uploadedFiles.length > 0 ? 2.5 : 4,
-                px: 3,
-                minHeight: uploadedFiles.length > 0 ? '100px' : '250px',
-                display: 'flex',
-                flexDirection: 'column',
-                justifyContent: 'center',
-                alignItems: 'center',
-                gap: 1.5,
-                background: isDragActive 
-                  ? 'rgba(9, 132, 227, 0.04)' 
-                  : uploadedFiles.length > 0
-                  ? 'rgba(255, 255, 255, 0.7)'
-                  : 'rgba(255, 255, 255, 0.9)',
-                border: `2px dashed ${
-                  isDragActive 
-                    ? '#0984E3' 
-                    : uploadedFiles.length > 0
-                    ? 'rgba(9, 132, 227, 0.1)'
-                    : 'rgba(9, 132, 227, 0.2)'
-                }`,
-                transition: 'all 0.3s ease',
-                '&:hover': {
-                  border: '2px dashed #0984E3',
-                  backgroundColor: 'rgba(9, 132, 227, 0.04)',
-                  transform: 'translateY(-2px)',
-                }
-              }}
-            >
-              <input {...getInputProps()} accept={inputType === 'DigiMap' ? '.zip' : '.jpg,.jgw,.zip'} />
-              {uploadedFiles.length > 0 ? (
-                <Box sx={{ 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  justifyContent: 'flex-start', 
-                  gap: 2,
-                  width: '100%',
-                  maxWidth: '240px',
-                  margin: '0 auto'
-                }}>
-                  <Box
-                    sx={{
-                      width: 36,
-                      height: 36,
-                      borderRadius: '10px',
-                      background: 'linear-gradient(135deg, rgba(9, 132, 227, 0.1) 0%, rgba(116, 185, 255, 0.1) 100%)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      flexShrink: 0
-                    }}
-                  >
-                    <UploadIcon sx={{ 
-                      fontSize: 18, 
-                      color: 'rgba(9, 132, 227, 0.6)',
-                    }} />
-                  </Box>
-                  <Box sx={{ flex: 1 }}>
-                    <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 0.25, color: 'text.primary' }}>
-                      Add more files
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                      or drop them here
-                    </Typography>
-                  </Box>
-                </Box>
-              ) : (
-                <>
-                  <Box
-                    sx={{
-                      width: 56,
-                      height: 56,
-                      borderRadius: '16px',
-                      background: 'linear-gradient(135deg, rgba(9, 132, 227, 0.1) 0%, rgba(116, 185, 255, 0.1) 100%)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      margin: '0 auto',
-                    }}
-                  >
-                    <UploadIcon sx={{ 
-                      fontSize: 28, 
-                      color: isDragActive ? '#0984E3' : 'rgba(9, 132, 227, 0.6)',
-                      transition: 'all 0.3s ease',
-                    }} />
-                  </Box>
-                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75, alignItems: 'center' }}>
-                    <Typography variant="h6" sx={{ fontWeight: 600, fontSize: '1.125rem' }}>
-                      {isDragActive ? 'Drop files here' : 'Upload Files'}
-                    </Typography>
-                    <Typography color="text.secondary" sx={{ fontSize: '0.875rem' }}>
-                      {isDragActive ? 'Release to upload files' : 'Drag and drop files here or click to browse'}
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary" sx={{ opacity: 0.8 }}>
-                      {inputType === 'DigiMap' 
-                        ? 'Supported format: .zip'
-                        : 'Supported formats: .jpg + .jgw files or .zip containing both files'}
-                    </Typography>
-                  </Box>
-                </>
-              )}
-            </StyledPaper>
-
+            {/* Uploaded Files Section - Moved above dropzone */}
             {uploadedFiles.length > 0 && (
-              <Box sx={{ mt: 3 }}>
+              <Box sx={{ mb: 3 }}>
                 <Box sx={{ 
                   display: 'flex', 
                   alignItems: 'center', 
@@ -1421,14 +1374,14 @@ function Processing() {
                         <Box
                           className="file-icon-container"
                           sx={{
-                            width: 40,
-                            height: 40,
-                            borderRadius: '14px',
+                            width: 32,  // Reduced from 40
+                            height: 32,  // Reduced from 40
+                            borderRadius: '10px',  // Reduced from 14px
                             backgroundColor: 'rgba(9, 132, 227, 0.08)',
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
-                            mr: 2,
+                            mr: 1.5,  // Reduced from 2
                             transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
                           }}
                         >
@@ -1436,7 +1389,7 @@ function Processing() {
                             className="file-icon"
                             sx={{ 
                               color: 'rgba(9, 132, 227, 0.6)',
-                              fontSize: 20,
+                              fontSize: 16,  // Reduced from 20
                               transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
                             }} 
                           />
@@ -1447,29 +1400,31 @@ function Processing() {
                             sx={{ 
                               fontWeight: 600,
                               color: 'text.primary',
-                              mb: 0.5,
+                              mb: 0.25,  // Reduced from 0.5
                               textAlign: 'left',
                               overflow: 'hidden',
                               textOverflow: 'ellipsis',
-                              whiteSpace: 'nowrap'
+                              whiteSpace: 'nowrap',
+                              fontSize: '0.8125rem'  // Added smaller font size
                             }}
                           >
                             {file.name}
                           </Typography>
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>  {/* Reduced gap from 2 */}
                             <Typography 
                               className="file-type"
                               variant="caption" 
                               sx={{ 
                                 color: 'text.secondary',
                                 backgroundColor: 'rgba(0, 0, 0, 0.04)',
-                                px: 1.5,
-                                py: 0.5,
-                                borderRadius: '20px',
+                                px: 1,  // Reduced from 1.5
+                                py: 0.25,  // Reduced from 0.5
+                                borderRadius: '12px',  // Reduced from 20px
                                 fontWeight: 500,
                                 textTransform: 'uppercase',
                                 letterSpacing: '0.02em',
                                 transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                                fontSize: '0.65rem'  // Added smaller font size
                               }}
                             >
                               {file.name.split('.').pop().toUpperCase()}
@@ -1477,51 +1432,52 @@ function Processing() {
                             <Typography 
                               variant="caption" 
                               color="text.secondary"
-                              sx={{ flexShrink: 0 }}
+                              sx={{ 
+                                flexShrink: 0,
+                                fontSize: '0.65rem'  // Added smaller font size
+                              }}
                             >
                               {(file.size / 1024 / 1024).toFixed(2)} MB
                             </Typography>
                           </Box>
                         </Box>
                       </Box>
-                      <Box sx={{ display: 'flex', gap: 1 }}>
-                        {/* Delete Single File Button */}
+                      <Box sx={{ display: 'flex', gap: 0.5 }}>  {/* Reduced gap from 1 */}
                         <Tooltip 
                           title="Delete this file" 
                           placement="top"
                           arrow
                         >
-                      <IconButton 
-                        className="delete-button"
-                        onClick={(e) => {
-                          e.stopPropagation();
+                          <IconButton 
+                            className="delete-button"
+                            onClick={(e) => {
+                              e.stopPropagation();
                               const newFiles = uploadedFiles.filter((_, i) => i !== index);
                               setUploadedFiles(newFiles);
-                        }}
-                        sx={{
-                          width: 32,
-                          height: 32,
-                          color: 'text.secondary',
-                          transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                          opacity: 0,
-                          visibility: 'hidden',
-                          transform: 'translateX(10px) scale(0.8)',
-                          backgroundColor: 'rgba(0, 0, 0, 0.04)',
-                          '&:hover': {
-                            backgroundColor: '#EF5350',
-                            color: 'white',
-                            transform: 'translateX(0) scale(1.1)',
-                          }
-                        }}
-                      >
-                        <CloseIcon sx={{ 
-                          fontSize: 18,
-                          transition: 'all 0.2s ease',
-                        }} />
-                      </IconButton>
+                            }}
+                            sx={{
+                              width: 28,  // Reduced from 32
+                              height: 28,  // Reduced from 32
+                              color: 'text.secondary',
+                              transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                              opacity: 0,
+                              visibility: 'hidden',
+                              transform: 'translateX(10px) scale(0.8)',
+                              backgroundColor: 'rgba(0, 0, 0, 0.04)',
+                              '&:hover': {
+                                backgroundColor: '#EF5350',
+                                color: 'white',
+                                transform: 'translateX(0) scale(1.1)',
+                              }
+                            }}
+                          >
+                            <CloseIcon sx={{ 
+                              fontSize: 16,  // Reduced from 18
+                              transition: 'all 0.2s ease',
+                            }} />
+                          </IconButton>
                         </Tooltip>
 
-                        {/* Delete Pair Button - Only show for JPG/JGW files */}
                         {(file.name.toLowerCase().endsWith('.jpg') || 
                           file.name.toLowerCase().endsWith('.jpeg') ||
                           file.name.toLowerCase().endsWith('.jgw')) && (
@@ -1578,6 +1534,105 @@ function Processing() {
                 ))}
               </Box>
             )}
+
+            {/* Dropzone Section */}
+            <StyledPaper
+              {...getRootProps()}
+              sx={{
+                cursor: 'pointer',
+                textAlign: 'center',
+                py: uploadedFiles.length > 0 ? 1.5 : 3,
+                px: uploadedFiles.length > 0 ? 2 : 3,
+                minHeight: uploadedFiles.length > 0 ? '48px' : '200px',
+                maxHeight: uploadedFiles.length > 0 ? '48px' : '300px',
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'center',
+                alignItems: 'center',
+                gap: 1,
+                background: isDragActive 
+                  ? 'rgba(9, 132, 227, 0.04)' 
+                  : 'rgba(255, 255, 255, 0.7)',
+                border: `2px dashed ${
+                  isDragActive 
+                    ? '#0984E3' 
+                    : 'rgba(9, 132, 227, 0.2)'
+                }`,
+                transition: 'all 0.3s ease',
+                '&:hover': {
+                  border: '2px dashed #0984E3',
+                  backgroundColor: 'rgba(9, 132, 227, 0.04)',
+                  transform: 'translateY(-2px)',
+                }
+              }}
+            >
+              <input {...getInputProps()} accept={inputType === 'DigiMap' ? '.zip' : '.jpg,.jgw,.zip'} />
+              <Box
+                sx={{
+                  display: 'flex',
+                  flexDirection: uploadedFiles.length > 0 ? 'row' : 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',  // Changed to center
+                  gap: uploadedFiles.length > 0 ? 2 : 1,
+                  width: '100%',
+                  maxWidth: uploadedFiles.length > 0 ? '180px' : '240px',  // Reduced max width
+                  margin: '0 auto'
+                }}
+              >
+                <Box
+                  sx={{
+                    width: uploadedFiles.length > 0 ? 24 : 36,
+                    height: uploadedFiles.length > 0 ? 24 : 36,
+                    borderRadius: '8px',
+                    background: 'linear-gradient(135deg, rgba(9, 132, 227, 0.1) 0%, rgba(116, 185, 255, 0.1) 100%)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0
+                  }}
+                >
+                  <UploadIcon sx={{ 
+                    fontSize: uploadedFiles.length > 0 ? 14 : 18,
+                    color: 'rgba(9, 132, 227, 0.6)',
+                  }} />
+                </Box>
+                <Box sx={{ 
+                  textAlign: 'center',  // Changed to center
+                  flex: 'initial'  // Changed to initial
+                }}>
+                  <Typography 
+                    variant="subtitle2" 
+                    sx={{ 
+                      fontWeight: 600,
+                      color: 'text.primary',
+                      fontSize: uploadedFiles.length > 0 ? '0.75rem' : '0.875rem',
+                      mb: uploadedFiles.length > 0 ? 0 : 0.25
+                    }}
+                  >
+                    {uploadedFiles.length > 0 ? 'Add more files' : 'Upload Files'}
+                  </Typography>
+                  {(!uploadedFiles.length || isDragActive) && (
+                    <Typography 
+                      variant="caption" 
+                      color="text.secondary" 
+                      sx={{ 
+                        display: 'block',
+                        fontSize: '0.7rem'
+                      }}
+                    >
+                      {uploadedFiles.length > 0 ? 'or drop them here' : 'Drag and drop files here or click to browse'}
+                    </Typography>
+                  )}
+                </Box>
+              </Box>
+              {!uploadedFiles.length && (
+                <Typography variant="caption" color="text.secondary" sx={{ opacity: 0.8, mt: 1 }}>
+                  {inputType === 'DigiMap' 
+                    ? 'Supported format: .zip'
+                    : 'Supported formats: .jpg + .jgw files or .zip containing both files'}
+                </Typography>
+              )}
+            </StyledPaper>
           </Box>
 
           <ButtonContainer>
@@ -2175,46 +2230,26 @@ function Processing() {
 
   // Add cleanup effect for page unload
   React.useEffect(() => {
-    const handleBeforeUnload = async () => {
-      if (taskId) {
-        try {
-          await fetch(`${API_CONFIG.baseUrl}${API_CONFIG.endpoints.cancel}/${taskId}`, {
-            method: 'POST',
-            keepalive: true // Ensures the request completes even if the page is closing
-          });
-        } catch (error) {
-          console.error('Failed to cancel task on page unload:', error);
-        }
-      }
-    };
+    let isComponentMounted = true;
+    let hasBeenCancelled = false;  // Track if we've already sent a cancel request
 
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    
+    // Cleanup function
     return () => {
-      window.removeEventListener('beforeunload', handleBeforeUnload);
-      // Also cancel task when component unmounts
-      if (taskId) {
-        fetch(`${API_CONFIG.baseUrl}${API_CONFIG.endpoints.cancel}/${taskId}`, {
-          method: 'POST'
-        }).catch(error => {
-          console.error('Failed to cancel task on unmount:', error);
-        });
-      }
-    };
-  }, [taskId]);
-
-  // Add cleanup effect for unmounting
-  React.useEffect(() => {
-    return () => {
-      // Cleanup on unmount
+      isComponentMounted = false;
+      
+      // Only cleanup intervals and animations
       if (statusCheckInterval) {
         clearInterval(statusCheckInterval);
       }
       if (animationFrameRef.current) {
         cancelAnimationFrame(animationFrameRef.current);
       }
-      // Cancel task if it's still running
-      if (taskId && isProcessing) {
+      
+      // Only cancel task if explicitly processing and unmounting
+      // and we haven't already sent a cancel request
+      if (taskId && isProcessing && !processSuccess && !hasBeenCancelled && !isCancelling) {
+        hasBeenCancelled = true;  // Prevent duplicate cancel requests
+        console.log('Canceling task on unmount:', taskId);
         fetch(`${API_CONFIG.baseUrl}${API_CONFIG.endpoints.cancel}/${taskId}`, {
           method: 'POST',
           mode: 'cors',
@@ -2228,7 +2263,37 @@ function Processing() {
         });
       }
     };
-  }, [taskId, isProcessing]);
+  }, [taskId, isProcessing, processSuccess, isCancelling]);
+
+  // Modify the beforeunload handler
+  React.useEffect(() => {
+    let hasBeenCancelled = false;  // Track if we've already sent a cancel request
+
+    const handleBeforeUnload = async (event) => {
+      // Only cancel if actually processing and haven't already sent a cancel request
+      if (taskId && isProcessing && !processSuccess && !hasBeenCancelled && !isCancelling) {
+        hasBeenCancelled = true;  // Prevent duplicate cancel requests
+        event.preventDefault();
+        event.returnValue = '';
+        
+        try {
+          console.log('Canceling task on page unload:', taskId);
+          await fetch(`${API_CONFIG.baseUrl}${API_CONFIG.endpoints.cancel}/${taskId}`, {
+            method: 'POST',
+            keepalive: true
+          });
+        } catch (error) {
+          console.error('Failed to cancel task on page unload:', error);
+        }
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [taskId, isProcessing, processSuccess, isCancelling]);
 
   // Add server status fetch function
   const fetchServerStatus = async () => {
@@ -2249,7 +2314,6 @@ function Processing() {
       // Validate and format the data before setting state
       const formattedStatus = {
         total_tasks_processed: parseInt(data.total_tasks_processed) || 0,
-        total_files_processed: parseInt(data.total_files_processed) || 0,
         failed_tasks: parseInt(data.failed_tasks) || 0,
         cancelled_tasks: parseInt(data.cancelled_tasks) || 0,
         current_tasks: parseInt(data.current_tasks) || 0,
@@ -2257,7 +2321,7 @@ function Processing() {
         uptime_seconds: parseInt(data.uptime_seconds) || 0,
         max_concurrent_tasks: parseInt(data.max_concurrent_tasks) || 0,
         max_queue_size: parseInt(data.max_queue_size) || 0,
-        cpu_usage_percent: Math.min(Math.max(parseFloat(data.cpu_usage_percent) || 0, 0), 100) // Clamp between 0-100
+        cpu_usage_percent: Math.min(Math.max(parseFloat(data.cpu_usage_percent) || 0, 0), 100) // Ensure value is between 0-100
       };
 
       setServerStatus(formattedStatus);
@@ -2294,14 +2358,19 @@ function Processing() {
       </Typography>
       
       <StatusCard>
-        <StatusIcon color={serverStatus.cpu_usage_percent > 80 ? '239, 68, 68' : 
-                         serverStatus.cpu_usage_percent > 50 ? '245, 158, 11' : 
-                         '9, 132, 227'}>
+        <StatusIcon color={serverStatus.cpu_usage_percent > 80 ? '239, 68, 68' : serverStatus.cpu_usage_percent > 50 ? '245, 158, 11' : '9, 132, 227'}>
           <motion.div
             animate={{ rotate: [0, 360] }}
             transition={{ duration: 4, repeat: Infinity, ease: "linear" }}
+            style={{ 
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: '100%',
+              height: '100%'
+            }}
           >
-            <SettingsIcon />
+            <SettingsIcon sx={{ fontSize: 18 }} />
           </motion.div>
         </StatusIcon>
         <Box sx={{ flex: 1 }}>
@@ -2312,9 +2381,11 @@ function Processing() {
             variant="subtitle2" 
             sx={{ 
               fontWeight: 600, 
-              color: serverStatus.cpu_usage_percent > 80 ? '#EF4444' : 
-                     serverStatus.cpu_usage_percent > 50 ? '#F59E0B' : 
-                     '#0984E3'
+              color: serverStatus.cpu_usage_percent > 80 
+                ? '#EF4444' 
+                : serverStatus.cpu_usage_percent > 50 
+                ? '#F59E0B' 
+                : '#0984E3'
             }}
           >
             {Math.round(serverStatus.cpu_usage_percent)}%
@@ -2332,25 +2403,6 @@ function Processing() {
           </Typography>
           <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#2ECC71' }}>
             {serverStatus.queued_tasks || 0} / {serverStatus.max_queue_size || 0}
-          </Typography>
-        </Box>
-      </StatusCard>
-
-      <StatusCard>
-        <StatusIcon color="155, 89, 182">
-          <motion.div
-            animate={{ scale: [1, 1.1, 1] }}
-            transition={{ duration: 2, repeat: Infinity }}
-          >
-            <FolderIcon />
-          </motion.div>
-        </StatusIcon>
-        <Box sx={{ flex: 1 }}>
-          <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 500 }}>
-            Files Processed
-          </Typography>
-          <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#9B59B6' }}>
-            {(serverStatus.total_files_processed || 0).toLocaleString()}
           </Typography>
         </Box>
       </StatusCard>
@@ -2441,12 +2493,23 @@ function Processing() {
                   ease: "easeOut"
                 }}
               >
-            <Grid container spacing={4}>
+            <Grid 
+              container 
+              spacing={4} 
+              sx={{ 
+                minHeight: '700px',
+                '& .MuiGrid-item': {
+                  display: 'flex',
+                  flexDirection: 'column'
+                }
+              }}
+            >
               <Grid item xs={12} md={4}>
                     <motion.div
                       initial={{ opacity: 0, x: -20 }}
                       animate={{ opacity: 1, x: 0 }}
                       transition={{ delay: 0.2, duration: 0.4 }}
+                      style={{ height: '100%', display: 'flex', flexDirection: 'column' }}
                     >
                 <StyledPaper 
                   sx={{ 
@@ -2454,72 +2517,87 @@ function Processing() {
                     display: 'flex',
                     flexDirection: 'column',
                     height: '100%',
-                    minHeight: 'unset',
-                    '& .MuiStepLabel-root': {  // Reduce spacing in stepper
-                      py: 1,  // Reduced padding
+                    '& .MuiStepLabel-root': {
+                      py: 1,
                     },
                     '& .MuiStepContent-root': {
-                      ml: 2.5,  // Reduced margin
+                      ml: 2.5,
                     }
                   }}
                 >
-                  <Box sx={{ flex: '0 0 auto' }}>
-                  <Stepper 
-                    activeStep={activeStep} 
-                    orientation="vertical"
-                    sx={{
-                      '.MuiStepConnector-line': {
-                          minHeight: 24,  // Further reduced
+                  <Box sx={{ flex: '1 1 auto', overflowY: 'auto' }}>
+                    <Stepper 
+                      activeStep={activeStep} 
+                      orientation="vertical"
+                      sx={{
+                        '.MuiStepConnector-line': {
+                          display: 'none', // Hide the connector line
                         },
-                        '& .MuiStepLabel-label': {  // Reduce text size
+                        '.MuiStepConnector-root': {
+                          marginLeft: '28px', // Adjust spacing where line was
+                        },
+                        '& .MuiStepLabel-label': {
                           fontSize: '0.9rem',
                         },
                         '& .MuiStepLabel-iconContainer': {
-                          pr: 1.5,  // Reduced padding
-                      }
-                    }}
-                  >
-                    {steps.map((step, index) => (
-                      <Step key={index}>
-                        <StepLabel 
-                          StepIconComponent={(props) => (
-                            <CustomStepIcon {...props} active={activeStep === index} />
-                          )}
-                        >
-                          <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
-                            {step.label}
-                          </Typography>
-                                  <AnimatePresence mode="wait">
-                          {activeStep === index && (
-                            <motion.div
-                              initial={{ opacity: 0, y: -5 }}
-                              animate={{ opacity: 1, y: 0 }}
-                                      exit={{ opacity: 0, y: 5 }}
-                                      transition={{ duration: 0.3 }}
-                            >
-                              <Typography 
-                                variant="body2" 
-                                color="text.secondary"
-                                sx={{ 
-                                  mt: 0.5,
-                                  opacity: 0.8
+                          pr: 1.5,
+                          mr: 0.5,
+                          pl: 0.5,
+                        },
+                        '& .MuiStepLabel-root': {
+                          padding: '8px 0',
+                        }
+                      }}
+                    >
+                      {steps.map((step, index) => (
+                        <Step key={index}>
+                          <StepLabel 
+                            StepIconComponent={(props) => (
+                              <CustomStepIcon {...props} active={activeStep === index} />
+                            )}
+                          >
+                            <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+                              {step.label}
+                            </Typography>
+                                    <AnimatePresence mode="wait">
+                            {activeStep === index && (
+                              <motion.div
+                                initial={{ opacity: 0, height: 0, y: -10 }}
+                                animate={{ opacity: 1, height: 'auto', y: 0 }}
+                                exit={{ opacity: 0, height: 0, y: 10 }}
+                                transition={{ 
+                                  duration: 0.3,
+                                  opacity: { duration: 0.2 },
+                                  height: { duration: 0.3 },
+                                  y: { duration: 0.2 }
                                 }}
+                                style={{ overflow: 'hidden' }}
                               >
-                                {step.description}
-                              </Typography>
-                            </motion.div>
-                          )}
-                                  </AnimatePresence>
-                        </StepLabel>
-                      </Step>
-                    ))}
-                  </Stepper>
+                                <Typography 
+                                  variant="body2" 
+                                  color="text.secondary"
+                                  sx={{ 
+                                    mt: 0.5,
+                                    opacity: 0.8,
+                                    transform: 'translateZ(0)', // Force GPU acceleration
+                                    lineHeight: 1.5
+                                  }}
+                                >
+                                  {step.description}
+                                </Typography>
+                              </motion.div>
+                            )}
+                                    </AnimatePresence>
+                          </StepLabel>
+                        </Step>
+                      ))}
+                    </Stepper>
                   </Box>
                   {renderServerStatus()}
                 </StyledPaper>
                     </motion.div>
               </Grid>
-              <Grid item xs={12} md={8}>
+              <Grid item xs={12} md={8} sx={{ display: 'flex', flexDirection: 'column' }}>
                     <AnimatePresence mode="wait">
                 <motion.div
                   key={activeStep}
@@ -2527,8 +2605,9 @@ function Processing() {
                         animate={{ opacity: 1, x: 0, scale: 1 }}
                         exit={{ opacity: 0, x: -20, scale: 0.98 }}
                         transition={{ duration: 0.4, ease: "easeOut" }}
+                        style={{ height: '100%', display: 'flex', flexDirection: 'column' }}
                 >
-                  <StyledPaper>
+                  <StyledPaper sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
                     {steps[activeStep].content}
                   </StyledPaper>
                 </motion.div>
