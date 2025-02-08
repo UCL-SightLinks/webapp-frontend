@@ -614,7 +614,7 @@ function Processing() {
       const statusResponse = await fetch(`${API_CONFIG.baseUrl}${API_CONFIG.endpoints.status}/${id}`, {
         method: 'GET',
         mode: 'cors',
-        credentials: 'omit',
+        credentials: 'include',
         headers: defaultHeaders
       });
 
