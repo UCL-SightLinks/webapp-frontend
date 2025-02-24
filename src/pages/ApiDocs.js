@@ -9,70 +9,204 @@ function ApiDocs() {
 
   const endpoints = [
     {
-      method: 'POST',
-      path: '/api/analyze',
-      description: 'Upload and analyze satellite imagery',
+      method: 'GET/POST',
+      path: '/api/test',
+      description: 'Test endpoint to verify API functionality and server status',
       version: 'v1',
-      rateLimit: '100 requests/hour',
+      rateLimit: 'None',
+      response: {
+        status: 'operational',
+        version: '1.0.0',
+        timestamp: 'ISO-8601-timestamp',
+        endpoints: {
+          test: '/api/test',
+          predict: '/api/predict',
+          web_predict: '/web/predict',
+          status: '/web/status/<task_id>',
+          download: '/download/<token>'
+        },
+        models: {
+          yolo_n: true,
+          yolo_s: true,
+          mobilenet: true,
+          vgg16: true
+        },
+        cuda: {
+          available: true,
+          device_count: 1,
+          device_name: 'GPU-NAME'
+        },
+        system: {
+          cpu_percent: 0.0,
+          memory_percent: 0.0,
+          disk_percent: 0.0
+        }
+      },
+      examples: [
+        {
+          title: 'Basic Test',
+          curl: 'curl http://localhost:8000/api/test'
+        },
+        {
+          title: 'Upload Test',
+          curl: 'curl -X POST http://localhost:8000/api/test -F "file=@test.zip"'
+        }
+      ]
+    },
+    {
+      method: 'POST',
+      path: '/api/predict',
+      description: 'Synchronously processes uploaded files and returns results immediately',
+      version: 'v1',
+      rateLimit: 'None',
       request: {
         type: 'multipart/form-data',
         body: {
-          image: 'File (JPEG, PNG)',
-          options: {
-            detectZebraCrossings: 'boolean',
-            confidence: 'number (0-1)',
-            modelVersion: 'string (optional)',
-            returnAnnotatedImage: 'boolean (optional)',
-            region: {
-              topLeft: { lat: 'number', lng: 'number' },
-              bottomRight: { lat: 'number', lng: 'number' }
-            }
-          }
+          file: 'ZIP file containing images',
+          input_type: 'String (0=Digimap, 1=Custom)',
+          classification_threshold: 'Number (0-1, default: 0.35)',
+          prediction_threshold: 'Number (0-1, default: 0.5)',
+          save_labeled_image: 'Boolean (default: false)',
+          output_type: 'String (0=JSON, 1=TXT)',
+          yolo_model_type: 'String (n/s/m/l)'
         }
       },
       response: {
-        success: true,
-        processingTime: '1.23s',
-        modelVersion: '2.1.0',
-        results: {
-          zebraCrossings: [
-            {
-              id: 'zc_123456',
-              confidence: 0.95,
-              bbox: {
-                x1: 100,
-                y1: 200,
-                x2: 300,
-                y2: 400
-              },
-              coordinates: {
-                lat: 51.5074,
-                lng: -0.1278
-              },
-              metadata: {
-                orientation: 45,
-                length: 15,
-                width: 3,
-                stripeCount: 8
-              }
-            }
-          ],
-          annotatedImageUrl: 'https://api.example.com/images/annotated/123.jpg'
-        }
+        status: 'success',
+        message: 'Processing completed',
+        output_path: 'path/to/result.zip'
       },
       errors: [
-        { code: 400, message: 'Invalid image format' },
-        { code: 401, message: 'Invalid or missing API key' },
-        { code: 429, message: 'Rate limit exceeded' }
+        { code: 400, message: 'Invalid input' },
+        { code: 500, message: 'Internal server error' }
       ],
       examples: [
         {
-          title: 'Basic Analysis',
-          curl: 'curl -X POST https://api.example.com/v1/analyze \\\n  -H "Authorization: Bearer YOUR_API_KEY" \\\n  -F "image=@satellite.jpg" \\\n  -F "options={\\"detectZebraCrossings\\": true, \\"confidence\\": 0.8}"'
+          title: 'Basic Processing',
+          curl: 'curl -X POST http://localhost:8000/api/predict \\\n  -F "file=@images.zip" \\\n  -F "input_type=0" \\\n  -F "classification_threshold=0.35" \\\n  -F "prediction_threshold=0.5"'
         },
         {
-          title: 'With Region',
-          curl: 'curl -X POST https://api.example.com/v1/analyze \\\n  -H "Authorization: Bearer YOUR_API_KEY" \\\n  -F "image=@satellite.jpg" \\\n  -F "options={\\"region\\": {\\"topLeft\\": {\\"lat\\": 51.51, \\"lng\\": -0.13}, \\"bottomRight\\": {\\"lat\\": 51.50, \\"lng\\": -0.12}}}"'
+          title: 'Custom Processing',
+          curl: 'curl -X POST http://localhost:8000/api/predict \\\n  -F "file=@images.zip" \\\n  -F "input_type=1" \\\n  -F "save_labeled_image=true" \\\n  -F "output_type=1" \\\n  -F "yolo_model_type=s"'
+        }
+      ]
+    },
+    {
+      method: 'POST',
+      path: '/web/predict',
+      description: 'Asynchronously processes files with progress tracking',
+      version: 'v1',
+      rateLimit: 'None',
+      request: {
+        type: 'multipart/form-data',
+        body: {
+          file: 'ZIP file containing images',
+          input_type: 'String (0=Digimap, 1=Custom)',
+          classification_threshold: 'Number (0-1, default: 0.35)',
+          prediction_threshold: 'Number (0-1, default: 0.5)',
+          save_labeled_image: 'Boolean (default: false)',
+          output_type: 'String (0=JSON, 1=TXT)',
+          yolo_model_type: 'String (n/s/m/l)'
+        }
+      },
+      response: {
+        task_id: 'uuid',
+        message: 'Task queued successfully'
+      },
+      errors: [
+        { code: 503, message: 'Server is busy. Please try again later.' }
+      ],
+      examples: [
+        {
+          title: 'Queue Processing Task',
+          curl: 'curl -X POST http://localhost:8000/web/predict \\\n  -F "file=@images.zip" \\\n  -F "input_type=0" \\\n  -F "classification_threshold=0.35"'
+        }
+      ]
+    },
+    {
+      method: 'GET',
+      path: '/web/status/<task_id>',
+      description: 'Get task status and progress',
+      version: 'v1',
+      rateLimit: 'None',
+      response: {
+        percentage: '0-100',
+        log: 'current_stage',
+        has_detections: 'boolean',
+        download_token: 'token (only when completed)',
+        error: 'error_message (only when failed)'
+      },
+      examples: [
+        {
+          title: 'Check Task Status',
+          curl: 'curl http://localhost:8000/web/status/550e8400-e29b-41d4-a716-446655440000'
+        }
+      ]
+    },
+    {
+      method: 'GET',
+      path: '/download/<token>',
+      description: 'Download processed results using token',
+      version: 'v1',
+      rateLimit: 'None',
+      response: {
+        type: 'application/zip',
+        headers: {
+          'Content-Type': 'application/zip',
+          'Content-Disposition': 'attachment; filename=result.zip',
+          'Content-Length': 'file size in bytes'
+        }
+      },
+      examples: [
+        {
+          title: 'Download Results',
+          curl: 'curl -O -J http://localhost:8000/download/eyJhbGciOiJIUzI1NiIs...'
+        }
+      ]
+    },
+    {
+      method: 'POST',
+      path: '/web/cancel/<task_id>',
+      description: 'Cancel a running or queued task',
+      version: 'v1',
+      rateLimit: 'None',
+      response: {
+        status: 'success',
+        message: 'Task cancelled successfully'
+      },
+      errors: [
+        { code: 404, message: 'Task not found or cannot be cancelled' }
+      ],
+      examples: [
+        {
+          title: 'Cancel Task',
+          curl: 'curl -X POST http://localhost:8000/web/cancel/550e8400-e29b-41d4-a716-446655440000'
+        }
+      ]
+    },
+    {
+      method: 'GET',
+      path: '/api/server-status',
+      description: 'Get current server status and statistics',
+      version: 'v1',
+      rateLimit: 'None',
+      response: {
+        total_tasks_processed: 'int',
+        total_files_processed: 'int',
+        failed_tasks: 'int',
+        cancelled_tasks: 'int',
+        current_tasks: 'int',
+        queued_tasks: 'int',
+        uptime_seconds: 'float',
+        max_concurrent_tasks: 'int',
+        max_queue_size: 'int',
+        memory_usage_mb: 'float',
+        cpu_usage_percent: 'float'
+      },
+      examples: [
+        {
+          title: 'Get Server Status',
+          curl: 'curl http://localhost:8000/api/server-status'
         }
       ]
     }
@@ -146,6 +280,50 @@ function ApiDocs() {
             </Typography>
           </Box>
 
+          <Box sx={{ 
+            mb: 4, 
+            p: 3, 
+            backgroundColor: 'rgba(0, 0, 0, 0.02)',
+            borderRadius: 2,
+            border: '1px solid rgba(0, 0, 0, 0.08)'
+          }}>
+            <Typography variant="h6" gutterBottom sx={{ fontWeight: 600, mb: 2 }}>
+              Available Endpoints
+            </Typography>
+            {endpoints.map((endpoint, index) => (
+              <Box 
+                key={index} 
+                sx={{ 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  mb: 1,
+                  '&:last-child': { mb: 0 }
+                }}
+              >
+                <Typography
+                  sx={{
+                    fontFamily: 'monospace',
+                    fontSize: '0.9rem',
+                    mr: 2,
+                    color: 'text.secondary'
+                  }}
+                >
+                  {`${index + 1}. ${endpoint.path}`}
+                </Typography>
+                <Chip 
+                  label={endpoint.method}
+                  size="small"
+                  sx={{ 
+                    backgroundColor: '#2D3436',
+                    color: 'white',
+                    fontSize: '0.75rem',
+                    height: '20px'
+                  }}
+                />
+              </Box>
+            ))}
+          </Box>
+
           <GlassPaper sx={{ p: 4 }}>
             <Tabs 
               value={selectedTab} 
@@ -199,8 +377,10 @@ function ApiDocs() {
                         <Typography
                           sx={{
                             fontFamily: 'monospace',
-                            fontSize: '1rem',
+                            fontSize: '1.25rem',
+                            fontWeight: 600,
                             mr: 2,
+                            color: 'text.primary'
                           }}
                         >
                           {endpoint.path}
@@ -224,24 +404,28 @@ function ApiDocs() {
                         {endpoint.description}
                       </Typography>
 
-                      <Typography variant="h6" gutterBottom sx={{ fontWeight: 600, mt: 3 }}>
-                        Request
-                      </Typography>
-                      <Box
-                        sx={{
-                          backgroundColor: 'rgba(0, 0, 0, 0.04)',
-                          borderRadius: '8px',
-                          p: 2,
-                          mb: 3,
-                          fontFamily: 'monospace',
-                          overflow: 'auto',
-                          maxHeight: '300px',
-                        }}
-                      >
-                        <pre style={{ margin: 0 }}>
-                          {JSON.stringify(endpoint.request, null, 2)}
-                        </pre>
-                      </Box>
+                      {endpoint.request && (
+                        <>
+                          <Typography variant="h6" gutterBottom sx={{ fontWeight: 600, mt: 3 }}>
+                            Request
+                          </Typography>
+                          <Box
+                            sx={{
+                              backgroundColor: 'rgba(0, 0, 0, 0.04)',
+                              borderRadius: '8px',
+                              p: 2,
+                              mb: 3,
+                              fontFamily: 'monospace',
+                              overflow: 'auto',
+                              maxHeight: '300px',
+                            }}
+                          >
+                            <pre style={{ margin: 0 }}>
+                              {JSON.stringify(endpoint.request, null, 2)}
+                            </pre>
+                          </Box>
+                        </>
+                      )}
 
                       <Typography variant="h6" gutterBottom sx={{ fontWeight: 600 }}>
                         Response
@@ -262,52 +446,70 @@ function ApiDocs() {
                         </pre>
                       </Box>
 
-                      <Typography variant="h6" gutterBottom sx={{ fontWeight: 600 }}>
-                        Error Codes
-                      </Typography>
-                      <Box sx={{ mb: 3 }}>
-                        {endpoint.errors.map((error, idx) => (
-                          <Alert 
-                            key={idx} 
-                            severity="error" 
-                            sx={{ mb: 1 }}
-                            icon={false}
-                          >
-                            <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                              <Typography sx={{ fontWeight: 600, mr: 2 }}>
-                                {error.code}
-                              </Typography>
-                              <Typography>
-                                {error.message}
-                              </Typography>
-                            </Box>
-                          </Alert>
-                        ))}
-                      </Box>
-
-                      <Typography variant="h6" gutterBottom sx={{ fontWeight: 600 }}>
-                        Examples
-                      </Typography>
-                      {endpoint.examples.map((example, idx) => (
-                        <Box key={idx} sx={{ mb: 2 }}>
-                          <Typography variant="subtitle2" gutterBottom>
-                            {example.title}
+                      {endpoint.errors && endpoint.errors.length > 0 && (
+                        <>
+                          <Typography variant="h6" gutterBottom sx={{ fontWeight: 600 }}>
+                            Error Codes
                           </Typography>
-                          <Box
-                            sx={{
-                              backgroundColor: 'rgba(0, 0, 0, 0.04)',
-                              borderRadius: '8px',
-                              p: 2,
-                              fontFamily: 'monospace',
-                              whiteSpace: 'pre-wrap',
-                              wordBreak: 'break-all',
-                            }}
-                          >
-                            {example.curl}
+                          <Box sx={{ mb: 3 }}>
+                            {endpoint.errors.map((error, idx) => (
+                              <Alert 
+                                key={idx} 
+                                severity="error" 
+                                sx={{ mb: 1 }}
+                                icon={false}
+                              >
+                                <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                                  <Typography sx={{ fontWeight: 600, mr: 2 }}>
+                                    {error.code}
+                                  </Typography>
+                                  <Typography>
+                                    {error.message}
+                                  </Typography>
+                                </Box>
+                              </Alert>
+                            ))}
                           </Box>
-                        </Box>
-                      ))}
+                        </>
+                      )}
+
+                      {endpoint.examples && endpoint.examples.length > 0 && (
+                        <>
+                          <Typography variant="h6" gutterBottom sx={{ fontWeight: 600 }}>
+                            Examples
+                          </Typography>
+                          {endpoint.examples.map((example, idx) => (
+                            <Box key={idx} sx={{ mb: 2 }}>
+                              <Typography variant="subtitle2" gutterBottom>
+                                {example.title}
+                              </Typography>
+                              <Box
+                                sx={{
+                                  backgroundColor: 'rgba(0, 0, 0, 0.04)',
+                                  borderRadius: '8px',
+                                  p: 2,
+                                  fontFamily: 'monospace',
+                                  whiteSpace: 'pre-wrap',
+                                  wordBreak: 'break-all',
+                                }}
+                              >
+                                {example.curl}
+                              </Box>
+                            </Box>
+                          ))}
+                        </>
+                      )}
                     </Box>
+                    {index < endpoints.length - 1 && (
+                      <Box sx={{ 
+                        my: 6,
+                        py: 0.25,
+                        backgroundColor: '#2D3436',
+                        borderTop: '2px solid rgba(0, 0, 0, 0.12)',
+                        borderBottom: '2px solid rgba(0, 0, 0, 0.12)',
+                        width: '100%'
+                      }} />
+                    )}
                   </motion.div>
                 ))}
               </Box>
