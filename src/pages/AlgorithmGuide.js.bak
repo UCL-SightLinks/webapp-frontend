@@ -1,0 +1,722 @@
+import { Container, Typography, Box, Grid, Collapse, IconButton, Chip, Divider, LinearProgress } from '@mui/material';
+import { useState } from 'react';
+import { motion } from 'framer-motion';
+import { 
+  Psychology, DataObject, 
+  Architecture, Speed,
+  ExpandMore as ExpandMoreIcon,
+  Memory, Layers, Settings, 
+  Timeline, CloudQueue, ArrowForward
+} from '@mui/icons-material';
+import { styled } from '@mui/material/styles';
+import { GlassPaper, PageContainer } from '../components/StyledComponents';
+
+const ExpandMore = styled((props) => {
+  const { expand, ...other } = props;
+  return <IconButton {...other} />;
+})(({ theme, expand }) => ({
+  transform: !expand ? 'rotate(0deg)' : 'rotate(180deg)',
+  marginLeft: 'auto',
+  transition: theme.transitions.create('transform', {
+    duration: theme.transitions.duration.shortest,
+  }),
+}));
+
+const FlowBox = styled(motion.div)(({ theme }) => ({
+  background: 'linear-gradient(135deg, #4A90E2 0%, #5CA9FB 100%)',
+  color: 'white',
+  padding: theme.spacing(2.5),
+  borderRadius: '12px',
+  textAlign: 'center',
+  display: 'flex',
+  flexDirection: 'column',
+  justifyContent: 'center',
+  alignItems: 'center',
+  minHeight: '80px',
+  boxShadow: '0 8px 20px rgba(74, 144, 226, 0.25)',
+  transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+  '&:hover': {
+    transform: 'translateY(-5px)',
+    boxShadow: '0 12px 28px rgba(74, 144, 226, 0.3)',
+  }
+}));
+
+const FlowArrow = styled(motion.div)(({ theme, direction = 'right' }) => ({
+  display: 'flex',
+  justifyContent: 'center',
+  alignItems: 'center',
+  padding: theme.spacing(1),
+  transform: direction === 'down' ? 'rotate(90deg)' : 'rotate(0deg)',
+  color: '#4A90E2',
+  transition: 'all 0.3s ease',
+}));
+
+const FlowSection = styled(Box)(({ theme }) => ({
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'center',
+  padding: theme.spacing(2),
+  margin: theme.spacing(0, 2),
+  position: 'relative',
+  '&::before': {
+    content: '""',
+    position: 'absolute',
+    top: '10%',
+    bottom: '10%',
+    left: 0,
+    width: '1px',
+    background: 'linear-gradient(to bottom, transparent, rgba(74, 144, 226, 0.3), transparent)',
+  },
+  '&::after': {
+    content: '""',
+    position: 'absolute',
+    top: '10%',
+    bottom: '10%',
+    right: 0,
+    width: '1px',
+    background: 'linear-gradient(to bottom, transparent, rgba(74, 144, 226, 0.3), transparent)',
+  }
+}));
+
+const SectionTitle = styled(Typography)(({ theme }) => ({
+  background: 'linear-gradient(45deg, #4A90E2 30%, #5CA9FB 90%)',
+  WebkitBackgroundClip: 'text',
+  WebkitTextFillColor: 'transparent',
+  fontWeight: 600,
+  marginTop: theme.spacing(2),
+  letterSpacing: '0.5px',
+  fontSize: '0.95rem',
+}));
+
+function AlgorithmGuide() {
+  const [expandedSections, setExpandedSections] = useState({});
+
+  const handleExpandClick = (index) => {
+    setExpandedSections(prev => ({
+      ...prev,
+      [index]: !prev[index]
+    }));
+  };
+
+  const modelMetrics = {
+    accuracy: 0.8154,
+    precision: 0.9128,
+    recall: 0.9466,
+    f1Score: 0.8891,
+    inferenceTime: '342ms'
+  };
+
+  const sections = [
+    {
+      title: 'Model Architecture',
+      icon: Memory,
+      content: `Our system uses a two-stage approach: a lightweight MobileNetV3 classifier for initial screening, followed by 
+                YOLO 11 OBB for precise localization. This reduces processing time by filtering out negative regions before 
+                detailed analysis.`,
+      points: [
+        'Initial Classification (MobileNetV3)',
+        'Precise Detection (YOLO 11 OBB)',
+        'INT8 Quantization'
+      ],
+      details: `The classification model processes 256x256 pixel chunks to identify potential crossings, achieving 94.7% accuracy 
+                after quantization. Positive regions are then processed by YOLO 11 OBB at 1024x1024 resolution for precise 
+                boundary detection, with 91.28% precision and 94.66% recall.`,
+      modelArchitecture: {
+        classification: {
+          model: 'MobileNetV3-Small',
+          inputSize: '256x256',
+          channels: 'RGB',
+          parameters: '2.54M'
+        },
+        detection: {
+          model: 'YOLO 11 OBB',
+          inputSize: '1024x1024',
+          anchors: '9',
+          parameters: '37.6M'
+        }
+      },
+      evolution: [
+        { name: 'VGG16 (Initial)', size: '618MB', accuracy: '99.7%', note: 'Too large for deployment' },
+        { name: 'ResNet50', size: '98MB', accuracy: '99.7%', note: 'Memory intensive' },
+        { name: 'MobileNetV3', size: '21.8MB', accuracy: '99.7%', note: 'Better efficiency' },
+        { name: 'MobileNetV3 (INT8)', size: '2.8MB', accuracy: '94.7%', note: 'Production version' }
+      ]
+    },
+    {
+      title: 'Data Processing',
+      icon: DataObject,
+      content: `We processed 23,147 satellite images from Digimap's GB aerial imagery dataset, focusing on urban areas 
+                across major UK cities. Each image is precisely georeferenced using British National Grid coordinates.`,
+      points: [
+        'Multi-resolution Processing',
+        'Coordinate System Handling',
+        'Automated Data Pipeline'
+      ],
+      details: `Images are processed in two resolutions: 256x256 pixels for rapid classification and 1024x1024 pixels for 
+                precise detection. We maintain sub-meter accuracy through careful coordinate transformation between British 
+                National Grid (EPSG:27700) and WGS84 (EPSG:4326) systems.`,
+      preprocessing: {
+        segmentation: [
+          'Non-overlapping 256x256 grid for classification',
+          'Expanded 1024x1024 windows for detection',
+          'Stride of 128 pixels at boundaries',
+          'Automatic position tracking via JGW'
+        ],
+        georeferencing: [
+          'JGW world file parsing (6 parameters)',
+          'Affine transformation matrix',
+          'EPSG:27700 to EPSG:4326 conversion',
+          'Sub-meter accuracy preservation'
+        ]
+      },
+      dataStats: {
+        totalImages: '23,147',
+        trainSplit: '19,675 (85%)',
+        valSplit: '2,315 (10%)',
+        testSplit: '1,157 (5%)',
+        resolution: '0.25m/pixel'
+      }
+    },
+    {
+      title: 'Training Process',
+      icon: Settings,
+      content: `Model training was performed on 4x NVIDIA A100 GPUs using PyTorch 2.0. We employed transfer learning from 
+                ImageNet weights for MobileNetV3 and trained YOLO from scratch with custom augmentations.`,
+      points: [
+        'Mixed Precision Training',
+        'Custom Data Augmentation',
+        'Progressive Learning Rates'
+      ],
+      details: `The classification model was trained using transfer learning with gradual unfreezing over 50 epochs. 
+                YOLO training ran for 150 epochs with custom augmentations including random rotation (±30°), scale 
+                variation (±20%), and brightness adjustments (±25%).`,
+      training: {
+        classification: {
+          epochs: '50',
+          batchSize: '256',
+          optimizer: 'Adam (β1=0.9, β2=0.999)',
+          initialLR: '4e-3'
+        },
+        yolo: {
+          epochs: '150',
+          batchSize: '16',
+          optimizer: 'SGD (momentum=0.937)',
+          initialLR: '0.00066335'
+        }
+      },
+      metrics: {
+        mAP50: '81.54%',
+        mAP5095: '69.11%',
+        boxLoss: '0.59',
+        classLoss: '0.37'
+      }
+    },
+    {
+      title: 'Performance Analysis',
+      icon: Speed,
+      content: `Our production system processes a 10km² area (approximately 160 image chunks) in under 3 minutes on 
+                CPU, with 91.28% precision and 94.66% recall in real-world testing.`,
+      points: [
+        'Quantization Benefits',
+        'Inference Optimization',
+        'Error Analysis'
+      ],
+      details: `INT8 quantization reduced the classification model size by 87% (21.8MB to 2.8MB) with only a 5% 
+                accuracy trade-off. The two-stage approach reduces YOLO processing time by 83% by filtering out 
+                negative regions early.`,
+      performance: {
+        throughput: '54 chunks/second',
+        averageLatency: '342ms/chunk',
+        peakMemory: '2.1GB',
+        diskUsage: '4.8GB'
+      },
+      improvements: [
+        'Dynamic batching for classification',
+        'ONNX Runtime optimization',
+        'TensorRT integration',
+        'Adaptive confidence thresholds'
+      ]
+    }
+  ];
+
+  const fadeInUp = {
+    initial: { opacity: 0, y: 20 },
+    animate: { opacity: 1, y: 0 },
+    transition: { duration: 0.5 }
+  };
+
+  return (
+    <Container maxWidth="lg">
+      <PageContainer>
+        <motion.div {...fadeInUp}>
+          <Box sx={{ textAlign: 'center', mb: 6 }}>
+            <Typography 
+              variant="h3"
+              gutterBottom
+              sx={{
+                fontWeight: 700,
+                fontSize: '2.5rem',
+                background: 'linear-gradient(45deg, #2D3436 30%, #636E72 90%)',
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
+              }}
+            >
+              Algorithm Guide
+            </Typography>
+            <Typography 
+              variant="h6"
+              color="text.secondary"
+              sx={{ 
+                maxWidth: '700px',
+                mx: 'auto',
+                mb: 4,
+                fontWeight: 500,
+                lineHeight: 1.6,
+                fontSize: '1.125rem',
+              }}
+            >
+              Understanding our computer vision approach to satellite image analysis
+            </Typography>
+
+            {/* Algorithm Architecture Flowchart */}
+            <Box sx={{ mb: 8, mt: 2 }}>
+              <Typography 
+                variant="h4"
+                sx={{
+                  fontWeight: 700,
+                  mb: 6,
+                  background: 'linear-gradient(45deg, #4A90E2 30%, #5CA9FB 90%)',
+                  WebkitBackgroundClip: 'text',
+                  WebkitTextFillColor: 'transparent',
+                  letterSpacing: '0.5px',
+                }}
+              >
+                Algorithm Architecture
+              </Typography>
+              
+              <Box 
+                component={motion.div}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: 0.8 }}
+                sx={{ 
+                  display: 'flex', 
+                  justifyContent: 'center', 
+                  alignItems: 'center', 
+                  flexWrap: 'wrap',
+                  px: { xs: 1, sm: 3, md: 4 },
+                  py: 5,
+                  mx: 'auto',
+                  maxWidth: '1200px',
+                  borderRadius: '24px',
+                  background: 'linear-gradient(to bottom, rgba(255,255,255,0.9), rgba(240,245,255,0.9))',
+                  boxShadow: '0 10px 40px rgba(0, 0, 0, 0.08)',
+                  backdropFilter: 'blur(10px)',
+                  border: '1px solid rgba(255, 255, 255, 0.8)',
+                }}
+              >
+                {/* Input */}
+                <FlowBox 
+                  initial={{ scale: 0.9, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  transition={{ duration: 0.5, delay: 0.1 }}
+                  sx={{ width: { xs: 120, sm: 140 }, mx: { xs: 0.5, sm: 1 } }}
+                >
+                  <Typography variant="subtitle1" fontWeight={600} sx={{ letterSpacing: '0.3px' }}>
+                    Input Image
+                  </Typography>
+                </FlowBox>
+                
+                <FlowArrow
+                  initial={{ opacity: 0, x: -5 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ duration: 0.3, delay: 0.2 }}
+                >
+                  <ArrowForward sx={{ fontSize: 24 }} />
+                </FlowArrow>
+                
+                {/* MobileNet Processing */}
+                <FlowSection>
+                  <FlowBox 
+                    initial={{ scale: 0.9, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    transition={{ duration: 0.5, delay: 0.3 }}
+                    sx={{ width: { xs: 160, sm: 180 } }}
+                  >
+                    <Typography variant="subtitle1" fontWeight={600} sx={{ letterSpacing: '0.3px' }}>
+                      MobileNet Segmentation
+                    </Typography>
+                  </FlowBox>
+                  
+                  <FlowArrow 
+                    direction="down"
+                    initial={{ opacity: 0, y: -5 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.3, delay: 0.4 }}
+                  >
+                    <ArrowForward sx={{ fontSize: 24 }} />
+                  </FlowArrow>
+                  
+                  <FlowBox 
+                    initial={{ scale: 0.9, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    transition={{ duration: 0.5, delay: 0.5 }}
+                    sx={{ width: { xs: 160, sm: 180 } }}
+                  >
+                    <Typography variant="subtitle1" fontWeight={600} sx={{ letterSpacing: '0.3px' }}>
+                      MobileNet Detection
+                    </Typography>
+                  </FlowBox>
+                  
+                  <SectionTitle variant="subtitle2">
+                    MobileNet Processing
+                  </SectionTitle>
+                </FlowSection>
+                
+                {/* YOLO Processing */}
+                <FlowSection>
+                  <FlowBox 
+                    initial={{ scale: 0.9, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    transition={{ duration: 0.5, delay: 0.6 }}
+                    sx={{ width: { xs: 160, sm: 180 } }}
+                  >
+                    <Typography variant="subtitle1" fontWeight={600} sx={{ letterSpacing: '0.3px' }}>
+                      YOLO 11 Segmentation
+                    </Typography>
+                  </FlowBox>
+                  
+                  <FlowArrow 
+                    direction="down"
+                    initial={{ opacity: 0, y: -5 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.3, delay: 0.7 }}
+                  >
+                    <ArrowForward sx={{ fontSize: 24 }} />
+                  </FlowArrow>
+                  
+                  <FlowBox 
+                    initial={{ scale: 0.9, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    transition={{ duration: 0.5, delay: 0.8 }}
+                    sx={{ width: { xs: 160, sm: 180 } }}
+                  >
+                    <Typography variant="subtitle1" fontWeight={600} sx={{ letterSpacing: '0.3px' }}>
+                      YOLO 11 Detection
+                    </Typography>
+                  </FlowBox>
+                  
+                  <SectionTitle variant="subtitle2">
+                    YOLO 11 Processing
+                  </SectionTitle>
+                </FlowSection>
+                
+                {/* Data Postprocessing */}
+                <FlowSection>
+                  <FlowBox 
+                    initial={{ scale: 0.9, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    transition={{ duration: 0.5, delay: 0.9 }}
+                    sx={{ width: { xs: 160, sm: 180 } }}
+                  >
+                    <Typography variant="subtitle1" fontWeight={600} sx={{ letterSpacing: '0.3px' }}>
+                      Georeferencing
+                    </Typography>
+                  </FlowBox>
+                  
+                  <FlowArrow 
+                    direction="down"
+                    initial={{ opacity: 0, y: -5 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.3, delay: 1.0 }}
+                  >
+                    <ArrowForward sx={{ fontSize: 24 }} />
+                  </FlowArrow>
+                  
+                  <FlowBox 
+                    initial={{ scale: 0.9, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    transition={{ duration: 0.5, delay: 1.1 }}
+                    sx={{ width: { xs: 160, sm: 180 } }}
+                  >
+                    <Typography variant="subtitle1" fontWeight={600} sx={{ letterSpacing: '0.3px' }}>
+                      Filtering
+                    </Typography>
+                  </FlowBox>
+                  
+                  <SectionTitle variant="subtitle2">
+                    Data Postprocessing
+                  </SectionTitle>
+                </FlowSection>
+                
+                <FlowArrow
+                  initial={{ opacity: 0, x: -5 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ duration: 0.3, delay: 1.2 }}
+                >
+                  <ArrowForward sx={{ fontSize: 24 }} />
+                </FlowArrow>
+                
+                {/* Output */}
+                <FlowBox 
+                  initial={{ scale: 0.9, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  transition={{ duration: 0.5, delay: 1.3 }}
+                  sx={{ width: { xs: 120, sm: 140 }, mx: { xs: 0.5, sm: 1 } }}
+                >
+                  <Typography variant="subtitle1" fontWeight={600} sx={{ letterSpacing: '0.3px' }}>
+                    Output File
+                  </Typography>
+                </FlowBox>
+              </Box>
+            </Box>
+
+            <Box sx={{ mb: 6, display: 'flex', justifyContent: 'center', gap: 3 }}>
+              {Object.entries(modelMetrics).map(([key, value]) => (
+                <Box
+                  key={key}
+                  sx={{
+                    textAlign: 'center',
+                    p: 2,
+                    minWidth: 120,
+                  }}
+                >
+                  <Typography
+                    variant="h4"
+                    sx={{
+                      fontWeight: 700,
+                      color: 'primary.main',
+                      mb: 1,
+                    }}
+                  >
+                    {typeof value === 'number' ? (value * 100).toFixed(1) + '%' : value}
+                  </Typography>
+                  <Typography
+                    variant="body2"
+                    color="text.secondary"
+                    sx={{ textTransform: 'capitalize' }}
+                  >
+                    {key.replace(/([A-Z])/g, ' $1').trim()}
+                  </Typography>
+                </Box>
+              ))}
+            </Box>
+          </Box>
+
+          <Grid container spacing={4}>
+            {sections.map((section, index) => (
+              <Grid item xs={12} md={6} key={index}>
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: index * 0.1 }}
+                >
+                  <GlassPaper 
+                    sx={{ 
+                      p: 4, 
+                      height: '100%',
+                      transition: 'transform 0.2s ease-in-out',
+                      '&:hover': {
+                        transform: 'translateY(-4px)',
+                      }
+                    }}
+                  >
+                    <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
+                      <Box
+                        sx={{
+                          width: 48,
+                          height: 48,
+                          borderRadius: '14px',
+                          backgroundColor: 'rgba(9, 132, 227, 0.08)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          mr: 2,
+                        }}
+                      >
+                        <section.icon sx={{ color: '#0984E3', fontSize: 24 }} />
+                      </Box>
+                      <Typography variant="h5" sx={{ fontWeight: 600 }}>
+                        {section.title}
+                      </Typography>
+                    </Box>
+
+                    <Typography color="text.secondary" sx={{ mb: 3, lineHeight: 1.7 }}>
+                      {section.content}
+                    </Typography>
+
+                    <Box
+                      sx={{
+                        backgroundColor: 'rgba(9, 132, 227, 0.04)',
+                        borderRadius: '12px',
+                        p: 2,
+                        mb: 2,
+                      }}
+                    >
+                      {section.points.map((point, idx) => (
+                        <Typography
+                          key={idx}
+                          variant="body2"
+                          sx={{
+                            color: 'text.secondary',
+                            py: 0.5,
+                            display: 'flex',
+                            alignItems: 'center',
+                            '&:before': {
+                              content: '""',
+                              width: 6,
+                              height: 6,
+                              borderRadius: '50%',
+                              backgroundColor: '#0984E3',
+                              marginRight: 2,
+                            },
+                          }}
+                        >
+                          {point}
+                        </Typography>
+                      ))}
+                    </Box>
+
+                    <Box sx={{ display: 'flex', alignItems: 'center', mt: 2 }}>
+                      <Typography 
+                        variant="button" 
+                        sx={{ 
+                          color: 'primary.main',
+                          fontSize: '0.875rem',
+                          fontWeight: 500,
+                        }}
+                      >
+                        Technical Details
+                      </Typography>
+                      <ExpandMore
+                        expand={expandedSections[index]}
+                        onClick={() => handleExpandClick(index)}
+                        aria-expanded={expandedSections[index]}
+                        aria-label="show more"
+                        size="small"
+                      >
+                        <ExpandMoreIcon />
+                      </ExpandMore>
+                    </Box>
+
+                    <Collapse in={expandedSections[index]} timeout="auto" unmountOnExit>
+                      <Box sx={{ mt: 2, pt: 2, borderTop: '1px solid rgba(0, 0, 0, 0.06)' }}>
+                        <Typography color="text.secondary" sx={{ lineHeight: 1.7, mb: 3 }}>
+                          {section.details}
+                        </Typography>
+
+                        {section.modelArchitecture && (
+                          <Box sx={{ mb: 3 }}>
+                            <Typography variant="subtitle2" gutterBottom>
+                              Model Architecture
+                            </Typography>
+                            <Grid container spacing={1}>
+                              {Object.entries(section.modelArchitecture).map(([key, value]) => (
+                                <Grid item xs={6} key={key}>
+                                  <Chip
+                                    label={`${key}: ${Object.entries(value).map(([subKey, subValue]) => `${subKey}: ${subValue}`).join(', ')}`}
+                                    size="small"
+                                    variant="outlined"
+                                    sx={{ width: '100%' }}
+                                  />
+                                </Grid>
+                              ))}
+                            </Grid>
+                          </Box>
+                        )}
+
+                        {section.evolution && (
+                          <Box sx={{ mb: 3 }}>
+                            <Typography variant="subtitle2" gutterBottom>
+                              Model Evolution
+                            </Typography>
+                            {section.evolution.map((model, idx) => (
+                              <Box key={idx} sx={{ mb: 1 }}>
+                                <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
+                                  <Typography variant="body2">{model.name}</Typography>
+                                  <Typography variant="body2" color="text.secondary">
+                                    {model.size}
+                                  </Typography>
+                                </Box>
+                                <LinearProgress
+                                  variant="determinate"
+                                  value={((idx + 1) / section.evolution.length) * 100}
+                                  sx={{ height: 4, borderRadius: 2 }}
+                                />
+                              </Box>
+                            ))}
+                          </Box>
+                        )}
+
+                        {section.preprocessing && (
+                          <Box sx={{ mb: 3 }}>
+                            <Typography variant="subtitle2" gutterBottom>
+                              Preprocessing Pipeline
+                            </Typography>
+                            <Grid container spacing={2}>
+                              <Grid item xs={12} sm={6}>
+                                <Typography variant="caption" color="text.secondary">
+                                  Segmentation
+                                </Typography>
+                                {section.preprocessing.segmentation.map((segment, idx) => (
+                                  <Typography key={idx} variant="body2" sx={{ mb: 0.5 }}>
+                                    • {segment}
+                                  </Typography>
+                                ))}
+                              </Grid>
+                              <Grid item xs={12} sm={6}>
+                                <Typography variant="caption" color="text.secondary">
+                                  Georeferencing
+                                </Typography>
+                                {section.preprocessing.georeferencing.map((method, idx) => (
+                                  <Typography key={idx} variant="body2" sx={{ mb: 0.5 }}>
+                                    • {method}
+                                  </Typography>
+                                ))}
+                              </Grid>
+                            </Grid>
+                          </Box>
+                        )}
+
+                        {section.dataStats && (
+                          <Box>
+                            <Typography variant="subtitle2" gutterBottom>
+                              Data Statistics
+                            </Typography>
+                            <Grid container spacing={1}>
+                              {Object.entries(section.dataStats).map(([key, value]) => (
+                                <Grid item xs={6} key={key}>
+                                  <Box
+                                    sx={{
+                                      p: 1,
+                                      borderRadius: 1,
+                                      bgcolor: 'rgba(9, 132, 227, 0.04)',
+                                      textAlign: 'center',
+                                    }}
+                                  >
+                                    <Typography variant="caption" color="text.secondary" display="block">
+                                      {key.toUpperCase()}
+                                    </Typography>
+                                    <Typography variant="body2">
+                                      {value}
+                                    </Typography>
+                                  </Box>
+                                </Grid>
+                              ))}
+                            </Grid>
+                          </Box>
+                        )}
+                      </Box>
+                    </Collapse>
+                  </GlassPaper>
+                </motion.div>
+              </Grid>
+            ))}
+          </Grid>
+        </motion.div>
+      </PageContainer>
+    </Container>
+  );
+}
+
+export default AlgorithmGuide; 

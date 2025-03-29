@@ -30,7 +30,8 @@ import {
   Queue as QueueIcon,
   Memory as MemoryIcon,
   Folder as FolderIcon,
-  ErrorOutline as ErrorOutlineIcon
+  ErrorOutline as ErrorOutlineIcon,
+  Cloud as CloudIcon
 } from '@mui/icons-material';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useDropzone } from 'react-dropzone';
@@ -388,18 +389,44 @@ const ContinueButton = styled(Button)(({ theme }) => ({
 
 // Update API configuration
 const API_CONFIG = {
-  baseUrl: 'http://api.sightlinks.org',  // Updated base URL
+  baseUrl: 'http://localhost:8000',  // Make URL configurable
+  // baseUrl: process.env.REACT_APP_API_URL || 'https://sightlinks.org/api',  // Make URL configurable
   endpoints: {
     webPredict: '/web/predict',
     status: '/web/status',
     download: '/download',
     cancel: '/web/cancel',
-    serverStatus: '/api/server-status'
+    serverStatus: '/server-status'
   }
 };
 
 const defaultHeaders = {
-  'Accept': 'application/json'
+  'Accept': 'application/json',
+  'Content-Type': 'application/json'
+};
+
+// Add API connection test function
+const testApiConnection = async () => {
+  try {
+    console.log('Testing API connection to:', API_CONFIG.baseUrl);
+    const response = await fetch(`${API_CONFIG.baseUrl}${API_CONFIG.endpoints.serverStatus}`, {
+      method: 'GET',
+      mode: 'cors',
+      credentials: 'omit',
+      headers: defaultHeaders
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Server responded with status: ${response.status}`);
+    }
+    
+    const data = await response.json();
+    console.log('API connection successful:', data);
+    return true;
+  } catch (error) {
+    console.error('API connection failed:', error);
+    return false;
+  }
 };
 
 // Add keyframe animations
@@ -486,6 +513,97 @@ const StatusIcon = styled(Box)(({ theme, color }) => ({
   }
 }));
 
+// Add a new styled component for the data sources tooltip
+const DataSourceTooltip = styled(Box)(({ theme }) => ({
+  position: 'absolute',
+  top: '100%',
+  left: '50%',
+  transform: 'translateX(-50%) translateY(-10px)',
+  zIndex: 1000,
+  opacity: 0,
+  visibility: 'hidden',
+  transition: 'all 0.3s ease',
+  minWidth: '350px',
+  maxWidth: '400px',
+  backdropFilter: 'blur(10px)',
+  border: '1px solid rgba(255, 255, 255, 0.1)',
+  borderRadius: '12px',
+  overflow: 'visible',
+  boxShadow: '0 12px 32px rgba(0, 0, 0, 0.18)',
+  '.info-button-container:hover &': {
+    opacity: 1,
+    visibility: 'visible',
+    transform: 'translateX(-50%) translateY(0)',
+  },
+  '&::before': {
+    content: '""',
+    position: 'absolute',
+    top: '-6px',
+    left: '50%',
+    transform: 'translateX(-50%) rotate(45deg)',
+    width: '12px',
+    height: '12px',
+    backgroundColor: 'rgba(9, 132, 227, 0.9)',
+    borderLeft: '1px solid rgba(255, 255, 255, 0.1)',
+    borderTop: '1px solid rgba(255, 255, 255, 0.1)',
+    zIndex: 0,
+  },
+  '.tooltip-label': {
+    backgroundColor: 'rgba(9, 132, 227, 0.9)',
+    color: 'white',
+    padding: '8px 16px',
+    fontSize: '0.75rem',
+    fontWeight: 600,
+    letterSpacing: '0.5px',
+    textTransform: 'uppercase',
+    borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
+    position: 'relative',
+    zIndex: 1,
+    borderTopLeftRadius: '12px',
+    borderTopRightRadius: '12px',
+  },
+  '.tooltip-content': {
+    backgroundColor: 'rgba(0, 0, 0, 0.85)',
+    color: '#E2E8F0',
+    padding: '12px 16px',
+    fontSize: '0.8rem',
+    lineHeight: '1.6',
+    whiteSpace: 'pre-wrap',
+    wordBreak: 'break-word',
+    position: 'relative',
+    zIndex: 1,
+    borderBottomLeftRadius: '12px',
+    borderBottomRightRadius: '12px',
+  },
+  '.data-source': {
+    padding: '12px',
+    borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
+  },
+  '.data-source:last-child': {
+    borderBottom: 'none',
+  },
+  '.data-source-title': {
+    fontSize: '0.85rem',
+    fontWeight: 600,
+    marginBottom: '4px',
+    color: 'white',
+  },
+  '.data-source-desc': {
+    fontSize: '0.75rem',
+    color: '#E2E8F0',
+    marginBottom: '8px',
+  },
+  '.data-source-link': {
+    display: 'inline-block',
+    fontSize: '0.75rem',
+    color: '#74B9FF',
+    textDecoration: 'none',
+    '&:hover': {
+      textDecoration: 'underline',
+    }
+  }
+}));
+
 // Add server status state
 function Processing() {
   const [activeStep, setActiveStep] = useState(0);
@@ -522,35 +640,153 @@ function Processing() {
     onDrop: (acceptedFiles) => {
       // Reset any previous errors
       setApiError(null);
+      console.log('Accepted files:', acceptedFiles); // Add logging
 
-      // Only accept ZIP files
-      const zipFiles = acceptedFiles.filter(
-        file => file.type === 'application/zip' || file.name.endsWith('.zip')
-      );
+      if (inputType === 'DigiMap') {
+        // For DigiMap: Accept ZIP, PNG, JPG, JPEG, JGW, JPGW files
+        const validFiles = acceptedFiles.filter(file => 
+          file.type === 'application/zip' || 
+          file.name.endsWith('.zip') ||
+          file.name.toLowerCase().endsWith('.png') ||
+          file.name.toLowerCase().endsWith('.jpg') ||
+          file.name.toLowerCase().endsWith('.jpeg') ||
+          file.name.toLowerCase().endsWith('.jgw') ||
+          file.name.toLowerCase().endsWith('.jpgw')
+        );
 
-      if (zipFiles.length === 0) {
-        setApiError('Please upload a ZIP file containing your data');
-        return;
+        if (validFiles.length === 0) {
+          setApiError('Please upload either a ZIP file or image files (PNG, JPG, JPEG) with world files (JGW, JPGW) from DigiMap');
+          return;
+        }
+
+        setUploadedFiles([...uploadedFiles, ...validFiles]);
+      } else {
+        // For GeoTIFF: Accept ZIP, TIF, TIFF files
+        const validFiles = acceptedFiles.filter(file => {
+          console.log('Checking file:', file.name, 'Type:', file.type); // Add logging
+          return file.type === 'application/zip' || 
+                 file.name.endsWith('.zip') ||
+                 file.type === 'image/tiff' ||
+                 file.type === 'application/x-tiff' ||
+                 file.type === 'application/tiff' ||
+                 file.name.toLowerCase().endsWith('.tif') ||
+                 file.name.toLowerCase().endsWith('.tiff');
+        });
+
+        console.log('Valid files:', validFiles); // Add logging
+
+        if (validFiles.length === 0) {
+          setApiError('Please upload either a ZIP file or GeoTIFF files (TIF, TIFF)');
+          return;
+        }
+
+        setUploadedFiles([...uploadedFiles, ...validFiles]);
       }
-
-      setUploadedFiles([...uploadedFiles, ...zipFiles]);
     },
-    accept: { 'application/zip': ['.zip'] },
+    accept: inputType === 'DigiMap' 
+      ? {
+          'application/zip': ['.zip'],
+          'image/jpeg': ['.jpg', '.jpeg'],
+          'image/png': ['.png'],
+          'application/octet-stream': ['.jgw', '.jpgw']
+        }
+      : {
+          'application/zip': ['.zip'],
+          'image/tiff': ['.tif', '.tiff'],
+          'application/x-tiff': ['.tif', '.tiff'],
+          'application/tiff': ['.tif', '.tiff'],
+          'application/octet-stream': ['.tif', '.tiff'],
+          'image/*': ['.tif', '.tiff']
+        },
     multiple: true,
     noClick: false,
     noKeyboard: false
   });
 
+  // Update the uploadToApi function with better error handling
   const uploadToApi = async (files) => {
     try {
+      console.log('Starting upload with files:', files);
+      console.log('Number of files to upload:', files.length);
+      files.forEach((file, index) => {
+        console.log(`File ${index}: ${file.name}, type: ${file.type}, size: ${file.size}`);
+      });
+
+      // Test API connection first
+      const isConnected = await testApiConnection();
+      if (!isConnected) {
+        throw new Error('Unable to connect to the API server. Please check your internet connection and try again.');
+      }
+
       const formData = new FormData();
       
-      // API only accepts ZIP files
-      const zipFile = files.find(file => file.type === 'application/zip' || file.name.endsWith('.zip'));
-      if (!zipFile) {
-        throw new Error('Only ZIP files are accepted for processing');
+      // File type detection
+      const zipFiles = files.filter(file => 
+        file.type === 'application/zip' || file.name.endsWith('.zip')
+      );
+      
+      const imageFiles = files.filter(file => 
+        file.name.toLowerCase().endsWith('.jpg') || 
+        file.name.toLowerCase().endsWith('.jpeg') || 
+        file.name.toLowerCase().endsWith('.png')
+      );
+      
+      const worldFiles = files.filter(file => 
+        file.name.toLowerCase().endsWith('.jgw') || 
+        file.name.toLowerCase().endsWith('.jpgw')
+      );
+      
+      const tiffFiles = files.filter(file => 
+        file.type === 'image/tiff' ||
+        file.type === 'application/x-tiff' ||
+        file.type === 'application/tiff' ||
+        file.name.toLowerCase().endsWith('.tif') || 
+        file.name.toLowerCase().endsWith('.tiff')
+      );
+      
+      console.log(`Found ${zipFiles.length} ZIP files`);
+      console.log(`Found ${imageFiles.length} image files`);
+      console.log(`Found ${worldFiles.length} world files`);
+      console.log(`Found ${tiffFiles.length} TIFF files`);
+      
+      // Prioritize files based on type
+      if (zipFiles.length > 0) {
+        // If ZIP files present, use only the first one
+        console.log(`Using ZIP file: ${zipFiles[0].name}`);
+        formData.append('file', zipFiles[0]);
+      } else if (inputType === 'DigiMap' && (imageFiles.length > 0 || worldFiles.length > 0)) {
+        // For DigiMap mode with image/world files
+        
+        // Add image files with indexed names
+        imageFiles.forEach((file, index) => {
+          const fieldName = index === 0 ? 'file' : `file${index}`;
+          console.log(`Adding image file as ${fieldName}: ${file.name}`);
+          formData.append(fieldName, file);
+        });
+        
+        // Add world files with indexed names
+        worldFiles.forEach((file, index) => {
+          const fieldName = index === 0 ? 'world_file' : `world_file${index}`;
+          console.log(`Adding world file as ${fieldName}: ${file.name}`);
+          formData.append(fieldName, file);
+        });
+        
+        // Set file count parameters
+        formData.append('image_file_count', String(imageFiles.length));
+        formData.append('world_file_count', String(worldFiles.length));
+      } else if (tiffFiles.length > 0) {
+        // For GeoTIFF files
+        tiffFiles.forEach((file, index) => {
+          const fieldName = index === 0 ? 'file' : `file${index}`;
+          console.log(`Adding TIFF file as ${fieldName}: ${file.name}`);
+          formData.append(fieldName, file);
+        });
+        
+        // Set file count parameter
+        formData.append('tiff_file_count', String(tiffFiles.length));
+      } else {
+        throw new Error('No valid files found for upload');
       }
-      formData.append('file', zipFile);
       
       // Convert parameters to the exact types expected by the API
       formData.append('input_type', String(inputType === 'DigiMap' ? 0 : 1));
@@ -559,44 +795,135 @@ function Processing() {
       formData.append('prediction_threshold', String(0.5));
       formData.append('yolo_model_type', 'n');
       formData.append('output_type', String(outputFormat === 'JSON' ? 0 : 1));
+      formData.append('multiple_files', 'true'); // Flag to indicate multiple files are being sent
 
       console.log('Uploading files to API...');
       console.log('API URL:', `${API_CONFIG.baseUrl}${API_CONFIG.endpoints.webPredict}`);
-
-      const response = await fetch(`${API_CONFIG.baseUrl}${API_CONFIG.endpoints.webPredict}`, {
-        method: 'POST',
-        body: formData,
-        mode: 'cors',
-        credentials: 'omit',
-        headers: defaultHeaders
-      });
-
-      const data = await response.json();
-      console.log('Upload response:', data);
       
-      if (!response.ok) {
-        if (response.status === 503) {
-          throw new Error('Server is busy. Please try again later.');
+      // Log all entries in FormData
+      console.log('FormData contents:');
+      for (let [key, value] of formData.entries()) {
+        if (value instanceof File) {
+          console.log(`FormData entry: ${key} - ${value.name} (${value.type}, ${value.size} bytes)`);
+        } else {
+          console.log(`FormData entry: ${key} - ${value}`);
         }
-        throw new Error(data.error || `API Error: ${response.statusText}`);
       }
 
-      if (data.task_id) {
-        console.log('Task ID received:', data.task_id);
-        setTaskId(data.task_id);
-        setProcessingStage(data.message || 'Task queued successfully');
-        startStatusCheck(data.task_id);
-      } else {
-        throw new Error('No task ID received from server');
-      }
+      // Use XMLHttpRequest instead of fetch for more detailed control and debugging
+      return new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        
+        xhr.open('POST', `${API_CONFIG.baseUrl}${API_CONFIG.endpoints.webPredict}`, true);
+        xhr.setRequestHeader('Accept', 'application/json');
+        
+        xhr.onload = function() {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            try {
+              const data = JSON.parse(xhr.responseText);
+              console.log('Upload response data:', data);
+              
+              if (data.task_id) {
+                console.log('Task ID received:', data.task_id);
+                setTaskId(data.task_id);
+                setProcessingStage(data.message || 'Task queued successfully');
+                startStatusCheck(data.task_id);
+                resolve(data);
+              } else {
+                reject(new Error('No task ID received from server'));
+              }
+            } catch (error) {
+              reject(new Error(`Error parsing response: ${error.message}`));
+            }
+          } else {
+            let errorMessage = 'Upload failed';
+            try {
+              const errorData = JSON.parse(xhr.responseText);
+              errorMessage = errorData.error || `API Error: ${xhr.statusText} (${xhr.status})`;
+            } catch (e) {
+              errorMessage = `API Error: ${xhr.statusText} (${xhr.status})`;
+            }
+            if (xhr.status === 503) {
+              errorMessage = 'Server is busy. Please try again later.';
+            }
+            reject(new Error(errorMessage));
+          }
+        };
+        
+        xhr.onerror = function() {
+          reject(new Error('Network error during upload'));
+        };
+        
+        xhr.upload.onprogress = function(e) {
+          if (e.lengthComputable) {
+            const percentComplete = Math.round((e.loaded / e.total) * 100);
+            console.log(`Upload progress: ${percentComplete}%`);
+          }
+        };
+        
+        xhr.send(formData);
+      }).then(data => {
+        return data; // Return data to continue the chain
+      }).catch(error => {
+        console.error('Upload error:', error);
+        setApiError(error.message);
+        setIsProcessing(false);
+        setProcessSuccess(false);
+        setProcessingStage('Error: ' + error.message);
+        throw error; // Re-throw to stop the chain
+      });
     } catch (error) {
       console.error('Upload error:', error);
       setApiError(error.message);
       setIsProcessing(false);
       setProcessSuccess(false);
+      setProcessingStage('Error: ' + error.message);
     }
   };
 
+  // Add an effect hook to clear any error messages when switching between stepper steps
+  React.useEffect(() => {
+    // Clear error messages when changing steps
+    setApiError(null);
+    setProcessingStage('');
+  }, [activeStep]);
+
+  // Add a complete error reset function to be called at critical points
+  const clearAllErrorStates = () => {
+    console.log('Clearing all error states');
+    setApiError(null);
+    setProcessingStage('');
+    if (statusCheckInterval) {
+      clearInterval(statusCheckInterval);
+      setStatusCheckInterval(null);
+    }
+  };
+
+  // Update handleStartProcessing to use the new clearAllErrorStates function
+  const handleStartProcessing = async () => {
+    // Immediately clear all error states at the beginning
+    clearAllErrorStates();
+    
+    // Clear any previous processing states
+    setIsProcessing(true);
+    setProgress(0);
+    setDisplayProgress(0);
+    progressRef.current = 0;
+    setProcessSuccess(false);
+    
+    // Reset task data
+    setTaskId(null);
+    setDownloadToken(null);
+    setIsCancelling(false);
+    
+    // Set initial processing stage
+    setProcessingStage('Starting upload...');
+    
+    // Start the upload process
+    await uploadToApi(uploadedFiles);
+  };
+
+  // Update checkProcessingStatus function to handle the new API response format
   const checkProcessingStatus = async (id) => {
     if (!id) {
       console.log('No task ID provided for status check');
@@ -614,12 +941,19 @@ function Processing() {
       const statusResponse = await fetch(`${API_CONFIG.baseUrl}${API_CONFIG.endpoints.status}/${id}`, {
         method: 'GET',
         mode: 'cors',
-        credentials: 'include',
+        credentials: 'omit',
         headers: defaultHeaders
       });
 
+      // Handle 404 (task not found) error specifically
+      if (statusResponse.status === 404) {
+        console.log('Task not found in status check');
+        throw new Error('Task not found or expired');
+      }
+
+      console.log('Status response status:', statusResponse.status);
       const statusData = await statusResponse.json();
-      console.log('Status response:', statusData);
+      console.log('Status response data:', statusData);
 
       // Only ignore updates if explicitly cancelled
       if (isCancelling) {
@@ -628,24 +962,24 @@ function Processing() {
       }
 
       if (!statusResponse.ok) {
-        if (statusResponse.status === 404) {
-          // Don't throw error for 404, just log it and continue
-          console.log('Task not found in status check, might be temporary');
-          return;
-        }
-        throw new Error(statusData.error || 'Failed to check status');
+        throw new Error(statusData.error || `API error: ${statusResponse.status}`);
       }
 
-      // Update progress and stage with proper fallbacks
-      const newProgress = typeof statusData.progress === 'number' ? statusData.progress : 
-                         typeof statusData.percentage === 'number' ? statusData.percentage : 
-                         progress;
-      setProgress(newProgress);
+      // Reset error state on successful status check
+      if (isProcessing && apiError) {
+        console.log('Clearing previous error message during active processing');
+        setApiError(null);
+      }
 
-      // Handle completed status first
-      if (statusData.status === 'completed') {
+      // First check the explicit error state from the new API format
+      if (statusData.error === true) {
+        console.log('Processing error reported by API:', statusData.error_message);
+        throw new Error(statusData.error_message || 'An error occurred during processing');
+      }
+
+      // Handle completed status according to the new API format
+      if (statusData.completed === true) {
         console.log('Task marked as completed');
-        setProgress(100);
         setProcessingStage('Processing complete');
         
         // Clear the status check interval
@@ -654,81 +988,52 @@ function Processing() {
           setStatusCheckInterval(null);
         }
 
+        // Set the detection status based on the has_detections flag
+        setHasDetections(!!statusData.has_detections);
+        
+        // Log total detections if available
+        if (statusData.total_detections !== undefined) {
+          console.log('Total detections found:', statusData.total_detections);
+          // Optionally update the UI to show this information
+          if (statusData.total_detections > 0) {
+            setProcessingStage(`Processing complete. Found ${statusData.total_detections} detections.`);
+          } else {
+            setProcessingStage('Processing complete. No detections found.');
+          }
+        }
+
         // If we have a download token, use it
         if (statusData.download_token) {
           setDownloadToken(statusData.download_token);
         }
 
-        // Mark as success even if there's a session_id error
+        // Mark as success and stop processing
         setProcessSuccess(true);
         setIsProcessing(false);
         return;
       }
 
-      // Better status message handling with fallbacks
-      let statusMessage = processingStage || `Processing: ${newProgress}% complete`;  // Default to last known status with progress
+      // Task is not completed yet, update status message
+      // Since the API doesn't provide specific in-progress status fields,
+      // we'll maintain our existing code for handling stage/status updates
+      // Determine status message based on available fields
+      let statusMessage = 'Processing files...';
       
-      if (statusData.status === 'unknown' || statusData.log?.toLowerCase() === 'unknown') {
-        // Keep both the last known status message and progress percentage
-        console.log('Received unknown status, maintaining last known status:', processingStage);
-        // Keep the existing status message which includes progress
-      } else if (statusData.stage) {
-        // Use the stage message from the API if available
+      if (statusData.stage) {
         statusMessage = statusData.stage;
-      } else if (statusData.status === 'queued' && typeof statusData.queue_position === 'number') {
+      } else if (statusData.status === 'queued') {
+        if (typeof statusData.queue_position === 'number') {
         statusMessage = `Waiting in queue (position ${statusData.queue_position})`;
-      } else if (statusData.log && statusData.log.toLowerCase() !== 'unknown') {
-        statusMessage = statusData.log;
-      } else if (newProgress === 0) {
-        statusMessage = 'Task queued, waiting to start...';
-      } else if (newProgress === 100) {
-        statusMessage = 'Processing complete';
-      } else if (newProgress > 0) {
-        statusMessage = `Processing: ${newProgress}% complete`;
+        } else {
+          statusMessage = 'Waiting in queue...';
+        }
+      } else if (statusData.status) {
+        statusMessage = `Status: ${statusData.status}`;
       }
 
-      // Handle cancelled state from API
-      if (statusData.is_cancelled) {
-        setIsCancelling(true);
-        throw new Error('Task was cancelled');
-      }
-      
-      // Only update the processing stage if we have a meaningful message
-      if (statusMessage && statusMessage.toLowerCase() !== 'unknown') {
+      // Update the processing stage with the new message
         setProcessingStage(statusMessage);
-      }
 
-      // Handle error in response
-      if (statusData.error && statusData.status !== 'completed') {  // Ignore errors if task is completed
-        throw new Error(statusData.error);
-      }
-
-      // Update has_detections state when available
-      if (typeof statusData.has_detections === 'boolean') {
-        setHasDetections(statusData.has_detections);
-      }
-
-      // Handle download token
-      if (statusData.download_token) {
-        console.log('Processing complete, download token:', statusData.download_token);
-        // Ensure we reach 100% before completing
-        setProgress(100);
-        setProcessingStage('Processing complete');
-        
-        // Wait for progress animation to complete
-        setTimeout(() => {
-          // Double check we haven't been cancelled during the timeout
-          if (!isCancelling) {
-            if (statusCheckInterval) {
-              clearInterval(statusCheckInterval);
-              setStatusCheckInterval(null);
-            }
-            setProcessSuccess(true);
-            setIsProcessing(false);
-            setDownloadToken(statusData.download_token);
-          }
-        }, 1000);
-      }
     } catch (error) {
       console.error('Status check error:', error);
       // Only set error if it's not a cancellation
@@ -751,6 +1056,9 @@ function Processing() {
       clearInterval(statusCheckInterval);
     }
     
+    // Explicitly clear error states when starting a new status check
+    setApiError(null);
+    
     // Reset states when starting new check
     setIsCancelling(false);
     setProcessingStage('Initializing task...');
@@ -767,61 +1075,45 @@ function Processing() {
     setStatusCheckInterval(interval);
   };
 
+  // Update the handleDownload function to use iframe for direct download with timestamp filename
   const handleDownload = async () => {
     if (!downloadToken) {
+      console.error('Download attempt with no token');
       setApiError('No download token available');
       return;
     }
 
     try {
-      console.log('Initiating download...');
-      const response = await fetch(`${API_CONFIG.baseUrl}${API_CONFIG.endpoints.download}/${downloadToken}`, {
-        method: 'GET',
-        mode: 'cors',
-        credentials: 'omit',
-        headers: {
-          ...defaultHeaders,
-          'Accept': 'application/zip'
-        }
-      });
-
-      if (!response.ok) {
-        console.error('Download failed:', response.status, response.statusText);
-        if (response.status === 401) {
-          throw new Error('Invalid or expired download token');
-        } else if (response.status === 404) {
-          throw new Error('Results not found');
-        } else if (response.status === 500) {
-          throw new Error('Server error while downloading results');
-        }
-        throw new Error('Failed to download results');
-      }
+      console.log('Initiating download with token:', downloadToken);
       
-      const blob = await response.blob();
-      console.log('Download successful, blob size:', blob.size);
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `results.zip`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
+      // Create timestamp for filename
+      const now = new Date();
+      const timestamp = now.toISOString().replace(/[:T.Z]/g, '-').substring(0, 19);
+      
+      // Generate the download URL with timestamp filename
+      const downloadUrl = `${API_CONFIG.baseUrl}${API_CONFIG.endpoints.download}/${downloadToken}?filename=results-${timestamp}.zip`;
+      
+      console.log('Download URL:', downloadUrl);
+      
+      // Create hidden iframe for direct download without any JS processing of the file
+      const iframe = document.createElement('iframe');
+      iframe.style.display = 'none';
+      document.body.appendChild(iframe);
+      
+      // Set iframe source to trigger download directly from server
+      iframe.src = downloadUrl;
+      
+      // Remove iframe after a delay
+      setTimeout(() => {
+        document.body.removeChild(iframe);
+        console.log('Download iframe removed');
+      }, 2000);
+      
+      console.log('Download initiated via iframe');
     } catch (error) {
       console.error('Download error:', error);
-      setApiError(error.message);
+      setApiError(`Download failed: ${error.message}`);
     }
-  };
-
-  const handleStartProcessing = async () => {
-    setIsProcessing(true);
-    setProgress(0);
-    setDisplayProgress(0);
-    progressRef.current = 0;
-    setProcessSuccess(false);
-    setApiError(null);
-    setProcessingStage('Starting upload...');
-    await uploadToApi(uploadedFiles);
   };
 
   React.useEffect(() => {
@@ -913,8 +1205,65 @@ function Processing() {
               Configure your data source and result format
             </Typography>
             
-            <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2 }}>
+            <Typography variant="subtitle1" sx={{ 
+              fontWeight: 600, 
+              mb: 2, 
+              display: 'flex', 
+              alignItems: 'center',
+              position: 'relative'
+            }}>
               Input Type
+              <Box 
+                component="span" 
+                sx={{ 
+                  ml: 1, 
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  position: 'relative'
+                }}
+                className="info-button-container"
+              >
+                <InfoIcon 
+                  sx={{ 
+                    fontSize: 18, 
+                    color: 'info.main', 
+                    cursor: 'pointer' 
+                  }} 
+                />
+                <DataSourceTooltip>
+                  <div className="tooltip-label">Data Sources</div>
+                  <div className="tooltip-content">
+                    <div className="data-source">
+                      <div className="data-source-title">Digimap (UK Academic Institutions)</div>
+                      <div className="data-source-desc">
+                        High-quality aerial imagery with georeferencing files. Includes Ordnance Survey maps for UK academic institutions.
+                      </div>
+                      <a 
+                        href="https://digimap.edina.ac.uk/" 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="data-source-link"
+                      >
+                        Visit Digimap →
+                      </a>
+                    </div>
+                    <div className="data-source">
+                      <div className="data-source-title">USGS Earth Explorer (Global)</div>
+                      <div className="data-source-desc">
+                        Access to GeoTIFF datasets including satellite imagery, aerial photographs, and elevation data. Free global service.
+                      </div>
+                      <a 
+                        href="https://earthexplorer.usgs.gov/" 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="data-source-link"
+                      >
+                        Visit Earth Explorer →
+                      </a>
+                    </div>
+                  </div>
+                </DataSourceTooltip>
+              </Box>
             </Typography>
             <Grid container spacing={2} sx={{ mb: 4 }}>
               <Grid item xs={12} sm={6}>
@@ -956,9 +1305,14 @@ function Processing() {
                   <TooltipContent>
                     <div className="tooltip-label">Supported Format</div>
                     <div className="tooltip-content">
-                      {`• ZIP file directly downloaded from DigiMap
-• Contains all necessary data
-• No modification needed`}
+                      {`• Option 1: ZIP Archive
+  - ZIP file from DigiMap
+  - Contains all required files
+
+• Option 2: Individual Files
+  - Image and world files
+  - Downloaded from DigiMap
+  - Must keep original names`}
                     </div>
                   </TooltipContent>
                 </DetectionObjectCard>
@@ -996,20 +1350,17 @@ function Processing() {
                       color="text.secondary"
                       sx={{ opacity: 0.8 }}
                     >
-                      Process custom format files
+                      Process GeoTIFF data
                     </Typography>
                   </Box>
                   <TooltipContent>
                     <div className="tooltip-label">Supported Formats</div>
                     <div className="tooltip-content">
-                      {`• Option 1: Individual Files
-  - Image file (.jpg)
-  - World file (.jgw)
-  - Must have same name
+                      {`• Option 1: ZIP Archive
+  - Contains multiple GeoTIFF files (.tif)
 
-• Option 2: ZIP Archive
-  - Contains .jpg + .jgw files
-  - Files must match names`}
+• Option 2: Individual Files
+  - Single GeoTIFF file (.tif) which contains embedded georeferencing`}
                     </div>
                   </TooltipContent>
                 </DetectionObjectCard>
@@ -1326,8 +1677,8 @@ function Processing() {
                 }}
               >
                 {inputType === 'DigiMap' 
-                  ? 'Upload the complete ZIP file exported from DigiMap containing all necessary data'
-                  : 'Upload matching image and label files (same filename) or a ZIP containing both files'}
+                  ? 'Upload a ZIP file from DigiMap or individual image and world files downloaded from DigiMap'
+                  : 'Upload GeoTIFF files (.tif) individually or as a ZIP archive'}
               </Typography>
             )}
 
@@ -1566,7 +1917,18 @@ function Processing() {
                 }
               }}
             >
-              <input {...getInputProps()} accept={inputType === 'DigiMap' ? '.zip' : '.jpg,.jgw,.zip'} />
+              <input 
+                {...getInputProps()} 
+                accept={inputType === 'DigiMap' 
+                  ? ".zip,.jpg,.jpeg,.png,.jgw,.jpgw"
+                  : ".zip,.tif,.tiff"
+                }
+                multiple={true}
+                onClick={(e) => {
+                  // Reset the input value to ensure onChange fires even if same file is selected
+                  e.target.value = '';
+                }}
+              />
               <Box
                 sx={{
                   display: 'flex',
@@ -1628,8 +1990,8 @@ function Processing() {
               {!uploadedFiles.length && (
                 <Typography variant="caption" color="text.secondary" sx={{ opacity: 0.8, mt: 1 }}>
                   {inputType === 'DigiMap' 
-                    ? 'Supported format: .zip'
-                    : 'Supported formats: .jpg + .jgw files or .zip containing both files'}
+                    ? 'Supported formats: ZIP, JPG/JPEG, PNG + JGW/JPGW files'
+                    : 'Supported formats: ZIP, TIF/TIFF files'}
                 </Typography>
               )}
             </StyledPaper>
@@ -1725,110 +2087,126 @@ function Processing() {
     };
   }, []);
 
-  // Update the progress circle component
+  // Replace the renderProgressCircle function with a loading animation
   const renderProgressCircle = () => (
           <Box
             sx={{
               position: 'relative',
-        width: { xs: '260px', md: '300px' },
-        height: { xs: '260px', md: '300px' },
+        width: { xs: '200px', md: '220px' },
+        height: { xs: '200px', md: '220px' },
               display: 'flex',
               alignItems: 'center',
-        justifyContent: 'center',
-        mt: 2
-            }}
+        justifyContent: 'center'
+      }}
+    >
+      {/* Simple background circle */}
+      <Box sx={{ position: 'relative', width: '100%', height: '100%' }}>
+        <svg width="100%" height="100%" viewBox="0 0 100 100">
+          {/* Background track */}
+          <circle
+            cx="50"
+            cy="50"
+            r="46"
+            fill="none"
+            stroke="#F8FAFC"
+            strokeWidth="6"
+          />
+          
+          {/* Loading arc - simpler design */}
+          <circle
+            cx="50"
+            cy="50"
+            r="46"
+            fill="none"
+            stroke="#4DA3FF"
+            strokeWidth="6"
+            strokeLinecap="round"
+            strokeDasharray="70, 289"
+            transform="rotate(-90 50 50)"
           >
-      {/* Background Glow */}
-              <Box
-                sx={{
-                  position: 'absolute',
-          width: '140%',
-          height: '140%',
-          background: `radial-gradient(circle, rgba(9, 132, 227, 0.08) 0%, transparent 70%)`,
-          animation: 'pulse 2s infinite',
-          '@keyframes pulse': {
-            '0%': {
-              transform: 'scale(0.95)',
-              opacity: 0.5,
-            },
-            '50%': {
-              transform: 'scale(1)',
-              opacity: 0.3,
-            },
-            '100%': {
-              transform: 'scale(0.95)',
-              opacity: 0.5,
-            },
-          },
-        }}
-      />
+            <animateTransform
+              attributeName="transform"
+              type="rotate"
+              from="-90 50 50"
+              to="270 50 50"
+              dur="1.5s"
+              repeatCount="indefinite"
+              additive="sum"
+            />
+          </circle>
+        </svg>
+      </Box>
 
-      {/* Background Circle */}
-      <CircularProgress
-        variant="determinate"
-        value={100}
-        size="100%"
-        thickness={2}
-              sx={{
-                position: 'absolute',
-          color: 'rgba(0, 0, 0, 0.04)',
-          transform: 'rotate(-90deg)'
-        }}
-      />
-      
-      {/* Progress Circle */}
-      <CircularProgress
-        variant="determinate"
-        value={displayProgress}
-        size="100%"
-        thickness={2}
+      {/* Center content with three dots */}
+      <Box
         sx={{
                   position: 'absolute',
-          color: '#0984E3',
-          transform: 'rotate(-90deg)',
-          '& .MuiCircularProgress-circle': {
-            strokeLinecap: 'round',
-            transition: 'stroke-dashoffset 0.3s linear'
-                }
-              }}
-            />
-
-            {/* Progress Text */}
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          width: '100%',
+          height: '100%'
+        }}
+      >
             <Box
               sx={{
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
-          gap: 1
-        }}
-      >
-        <Box sx={{ textAlign: 'center' }}>
-              <Typography
-            variant="h2"
+            justifyContent: 'center',
+            borderRadius: '50%',
+            width: '60%',
+            height: '60%',
+            background: 'white',
+            boxShadow: '0 2px 12px rgba(0, 0, 0, 0.06)'
+          }}
+        >
+          {/* Three dots in a row */}
+          <Box
                 sx={{
-              fontWeight: 600,
-              fontSize: { xs: '3.5rem', md: '4rem' },
-              color: '#0984E3',
-              fontFamily: 'monospace',
-              letterSpacing: '-0.05em',
-                  lineHeight: 1,
-                  mb: 1
-                }}
-              >
-            {displayProgress}
-              </Typography>
-              <Typography
-            variant="h5"
+              display: 'flex',
+              justifyContent: 'center',
+              gap: '8px',
+              mb: 1.5
+            }}
+          >
+            {[0, 1, 2].map((i) => (
+              <Box
+                key={i}
                 sx={{
-              fontWeight: 600,
-              fontSize: { xs: '1.25rem', md: '1.5rem' },
-              color: '#0984E3',
-              opacity: 0.5,
-                  fontFamily: 'monospace',
-              letterSpacing: '-0.05em'
+                  width: 8,
+                  height: 8,
+                  borderRadius: '50%',
+                  backgroundColor: '#4DA3FF',
+                  animation: `dot-pulse 1.4s infinite ease-in-out both`,
+                  animationDelay: `${i * 0.16}s`,
+                  '@keyframes dot-pulse': {
+                    '0%, 80%, 100%': {
+                      opacity: 0.4,
+                      transform: 'scale(0.8)'
+                    },
+                    '40%': {
+                      opacity: 1,
+                      transform: 'scale(1)'
+                    }
+                  }
                 }}
-              >
-            %
+              />
+            ))}
+          </Box>
+          
+              <Typography
+            variant="caption"
+                sx={{
+              fontSize: '0.75rem',
+              fontWeight: 500,
+              color: '#64748B',
+              textTransform: 'uppercase',
+              letterSpacing: '0.05em'
+            }}
+          >
+            PROCESSING
               </Typography>
             </Box>
           </Box>
@@ -1845,18 +2223,18 @@ function Processing() {
       >
         <StyledPaper 
             sx={{
-            p: { xs: 4, md: 6 },
+            p: { xs: 4, md: 5 },
             background: 'white',
             position: 'relative',
             overflow: 'hidden',
-            minHeight: '600px',
+            minHeight: '500px',
               display: 'flex',
               flexDirection: 'column',
             alignItems: 'center',
             justifyContent: 'center',
             textAlign: 'center',
             gap: 4,
-            borderRadius: '24px',
+            borderRadius: '16px',
             boxShadow: '0 8px 32px rgba(0, 0, 0, 0.08)',
             border: '1px solid rgba(0, 0, 0, 0.06)'
           }}
@@ -1891,214 +2269,18 @@ function Processing() {
             )}
           </IconButton>
 
-          {/* Progress Circle */}
+          {/* Loading Animation */}
                 <Box
                   sx={{
-                    position: 'relative',
-              width: { xs: '240px', md: '280px' },
-              height: { xs: '240px', md: '280px' },
+              mb: 2,
+              width: { xs: '200px', md: '220px' },
+              height: { xs: '200px', md: '220px' },
                     display: 'flex',
                     alignItems: 'center',
-              justifyContent: 'center',
-              mt: 2,
-              animation: 'floatContainer 6s ease-in-out infinite',
-              '@keyframes floatContainer': {
-                '0%, 100%': {
-                  transform: 'translateY(0px) scale(1)',
-                },
-                '50%': {
-                  transform: 'translateY(-10px) scale(1.02)',
-                },
-              }
+              justifyContent: 'center'
             }}
           >
-            {/* Background Glow */}
-                  <Box
-                    sx={{
-                        position: 'absolute',
-                width: '180%',
-                height: '180%',
-                background: `radial-gradient(circle, rgba(9, 132, 227, 0.12) 0%, rgba(116, 185, 255, 0.08) 40%, transparent 70%)`,
-                animation: 'glowPulse 4s ease-in-out infinite',
-                '@keyframes glowPulse': {
-                  '0%, 100%': {
-                    transform: 'scale(0.8) rotate(0deg)',
-                    opacity: 0.3,
-                  },
-                  '50%': {
-                    transform: 'scale(1.2) rotate(180deg)',
-                    opacity: 0.5,
-                  }
-                }
-              }}
-            />
-            
-            {/* Progress Circle with Gradient */}
-            <Box sx={{ position: 'relative', width: '100%', height: '100%' }}>
-              <svg width="100%" height="100%" viewBox="0 0 100 100" style={{ transform: 'rotate(-90deg)' }}>
-                <defs>
-                  <linearGradient id="circleGradient" gradientTransform="rotate(0)">
-                    <stop offset="0%" stopColor="#0984E3">
-                      <animate
-                        attributeName="stop-color"
-                        values="#0984E3; #74B9FF; #4FB7FF; #0984E3"
-                        dur="4s"
-                        repeatCount="indefinite"
-                      />
-                    </stop>
-                    <stop offset="50%" stopColor="#4FB7FF">
-                      <animate
-                        attributeName="stop-color"
-                        values="#4FB7FF; #0984E3; #74B9FF; #4FB7FF"
-                        dur="4s"
-                        repeatCount="indefinite"
-                      />
-                    </stop>
-                    <stop offset="100%" stopColor="#74B9FF">
-                      <animate
-                        attributeName="stop-color"
-                        values="#74B9FF; #4FB7FF; #0984E3; #74B9FF"
-                        dur="4s"
-                        repeatCount="indefinite"
-                      />
-                    </stop>
-                  </linearGradient>
-                  <filter id="glow">
-                    <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
-                    <feMerge>
-                      <feMergeNode in="coloredBlur"/>
-                      <feMergeNode in="SourceGraphic"/>
-                    </feMerge>
-                  </filter>
-                </defs>
-                <circle
-                  cx="50"
-                  cy="50"
-                  r="45"
-                  fill="none"
-                  stroke="url(#circleGradient)"
-                  strokeWidth="3"
-                  strokeLinecap="round"
-                  strokeDasharray={`${displayProgress * 2.83}, 283`}
-                  filter="url(#glow)"
-                  style={{
-                    transition: 'stroke-dasharray 0.3s ease'
-                  }}
-                >
-                  <animateTransform
-                    attributeName="gradientTransform"
-                    attributeType="XML"
-                    type="rotate"
-                    from="0 50 50"
-                    to="360 50 50"
-                    dur="8s"
-                    repeatCount="indefinite"
-                  />
-                </circle>
-              </svg>
-                  </Box>
-
-            {/* Progress Text */}
-            <Box
-              sx={{
-                position: 'absolute',
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                gap: 0.5,
-                animation: 'textFloat 3s ease-in-out infinite',
-                '@keyframes textFloat': {
-                  '0%, 100%': {
-                    transform: 'translateY(0px) scale(1)',
-                    filter: 'brightness(1)',
-                  },
-                  '50%': {
-                    transform: 'translateY(-5px) scale(1.02)',
-                    filter: 'brightness(1.1)',
-                  }
-                }
-              }}
-            >
-              <Box sx={{ position: 'relative' }}>
-                    <Typography
-                  variant="h1"
-                      sx={{
-                    fontWeight: 600,
-                    fontSize: { xs: '3rem', md: '3.5rem' },
-                    background: 'linear-gradient(135deg, #0984E3 0%, #74B9FF 100%)',
-                    WebkitBackgroundClip: 'text',
-                    WebkitTextFillColor: 'transparent',
-                        fontFamily: 'monospace',
-                    letterSpacing: '-0.05em',
-                    lineHeight: 1,
-                    mb: 0.5,
-                    animation: 'numberPulse 2s ease-in-out infinite',
-                    '@keyframes numberPulse': {
-                      '0%, 100%': {
-                        transform: 'scale(1)',
-                        filter: 'brightness(1)',
-                      },
-                      '50%': {
-                        transform: 'scale(1.05)',
-                        filter: 'brightness(1.2)',
-                      }
-                    }
-                  }}
-                >
-                  {displayProgress}
-                    </Typography>
-                <Typography
-                  variant="h4"
-                      sx={{
-                    fontWeight: 600,
-                    fontSize: { xs: '1.25rem', md: '1.5rem' },
-                    background: 'linear-gradient(135deg, #0984E3 0%, #74B9FF 100%)',
-                    WebkitBackgroundClip: 'text',
-                    WebkitTextFillColor: 'transparent',
-                    opacity: 0.7,
-                    fontFamily: 'monospace',
-                    letterSpacing: '-0.05em',
-                    position: 'absolute',
-                    right: -16,
-                    top: 8,
-                    animation: 'percentFloat 2s ease-in-out infinite',
-                    '@keyframes percentFloat': {
-                      '0%, 100%': {
-                        transform: 'translateY(0px) rotate(0deg)',
-                      },
-                      '50%': {
-                        transform: 'translateY(-3px) rotate(5deg)',
-                      }
-                    }
-                  }}
-                >
-                  %
-                </Typography>
-                    </Box>
-              <Typography
-                variant="body1"
-                    sx={{
-                  color: 'rgba(0, 0, 0, 0.4)',
-                  fontSize: '0.875rem',
-                  letterSpacing: '0.1em',
-                  textTransform: 'uppercase',
-                  fontWeight: 500,
-                  animation: 'processingText 3s ease-in-out infinite',
-                  '@keyframes processingText': {
-                    '0%, 100%': {
-                      opacity: 0.4,
-                      letterSpacing: '0.1em',
-                    },
-                    '50%': {
-                      opacity: 0.8,
-                      letterSpacing: '0.15em',
-                    }
-                  }
-                }}
-              >
-                Processing
-              </Typography>
-                </Box>
+            {renderProgressCircle()}
           </Box>
 
           {/* Status Text */}
@@ -2142,7 +2324,7 @@ function Processing() {
                 gap: 1.5,
                 py: 1.5,
               px: 2.5,
-              borderRadius: '12px',
+              borderRadius: '8px',
               backgroundColor: 'rgba(239, 68, 68, 0.04)',
               border: '1px solid rgba(239, 68, 68, 0.1)',
               maxWidth: 'fit-content',
@@ -2192,25 +2374,28 @@ function Processing() {
 
   // Add resetStates function
   const resetStates = () => {
-    setProcessSuccess(false);
+    // Reset all state values to their defaults
     setUploadedFiles([]);
+    setIsProcessing(false);
+    setProcessSuccess(false);
     setProgress(0);
-    setActiveStep(0);
+    setDisplayProgress(0);
+    progressRef.current = 0;
+    setApiError(null); // Clear any previous errors
     setTaskId(null);
     setDownloadToken(null);
     setProcessingStage('');
-    setApiError(null);
-    setIsProcessing(false);
+    setIsCancelling(false);
     setHasDetections(null);
+    // Clear any active intervals
     if (statusCheckInterval) {
       clearInterval(statusCheckInterval);
       setStatusCheckInterval(null);
     }
-    // Reset progress animation states
-    setDisplayProgress(0);
-    progressRef.current = 0;
+    // Clear any animation frames
     if (animationFrameRef.current) {
       cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = null;
     }
   };
 
@@ -2245,8 +2430,8 @@ function Processing() {
         cancelAnimationFrame(animationFrameRef.current);
       }
       
-      // Only cancel task if explicitly processing and unmounting
-      // and we haven't already sent a cancel request
+      // Only cancel task if explicitly processing and not completed
+      // We don't need to cancel if the process has successfully completed
       if (taskId && isProcessing && !processSuccess && !hasBeenCancelled && !isCancelling) {
         hasBeenCancelled = true;  // Prevent duplicate cancel requests
         console.log('Canceling task on unmount:', taskId);
@@ -2270,7 +2455,8 @@ function Processing() {
     let hasBeenCancelled = false;  // Track if we've already sent a cancel request
 
     const handleBeforeUnload = async (event) => {
-      // Only cancel if actually processing and haven't already sent a cancel request
+      // Only cancel if actually processing and not completed
+      // We don't need to cancel if the process has successfully completed
       if (taskId && isProcessing && !processSuccess && !hasBeenCancelled && !isCancelling) {
         hasBeenCancelled = true;  // Prevent duplicate cancel requests
         event.preventDefault();
@@ -2745,6 +2931,7 @@ function Processing() {
                           ? 'Your files have been successfully processed and detections were found'
                           : 'Your files have been processed, but no detections were found in the provided images'}
                     </Typography>
+                    {hasDetections && (
                     <Box
                       sx={{
                         display: 'flex',
@@ -2801,6 +2988,7 @@ function Processing() {
                           Results will be available for 2 hours
                       </Typography>
                     </Box>
+                    )}
                   </motion.div>
                   <motion.div
                     initial={{ opacity: 0, y: 20 }}
@@ -2818,14 +3006,15 @@ function Processing() {
                         variant="outlined"
                         onClick={resetStates}
                         sx={{
-                          flex: 1,
+                          flex: hasDetections ? 1 : 'auto',
                           py: 1.5,
                           borderRadius: '10px',
-                          maxWidth: 280,
+                          maxWidth: hasDetections ? 280 : 320,
                         }}
                       >
                         Process New Files
                       </Button>
+                      {hasDetections && (
                       <ContinueButton
                         variant="contained"
                         onClick={handleDownload}
@@ -2836,6 +3025,7 @@ function Processing() {
                         Download Results
                         <NextIcon className="arrow-icon" />
                       </ContinueButton>
+                      )}
                     </Box>
                   </motion.div>
                 </motion.div>

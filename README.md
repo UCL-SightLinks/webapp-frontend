@@ -1,70 +1,189 @@
-# Getting Started with Create React App
+# SightLinks Web Application Frontend
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+SightLinks is a web application that provides image processing capabilities using machine learning models. This repository contains the frontend of the application built with React.
 
-## Available Scripts
+## Features
 
-In the project directory, you can run:
+- Upload and process ZIP files containing images
+- Track processing progress with real-time updates
+- Download processed results
+- Various image processing options
+- API documentation and guides
+- Algorithm explanation and guides
+- GitHub setup instructions
 
-### `npm start`
+## Getting Started
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
+### Prerequisites
 
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
+- Node.js (v18.x or higher recommended)
+- npm or yarn
 
-### `npm test`
+### Installation
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+1. Clone the repository:
 
-### `npm run build`
+   ```bash
+   git clone https://github.com/UCL-SightLinks/webapp-frontend.git
+   cd webapp-frontend
+   ```
+2. Install dependencies:
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+   ```bash
+   npm install
+   ```
+3. Set up environment variables:
+   Create or modify the following files based on your environment:
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+   - `.env` - Base environment variables
+   - `.env.development` - Development-specific variables
+   - `.env.production` - Production-specific variables
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+   Example `.env.development`:
 
-### `npm run eject`
+   ```
+   CI=false
+   GENERATE_SOURCEMAP=false
+   REACT_APP_API_URL=/api
+   ```
 
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
+### Running Locally
 
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+Start the development server:
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
+```bash
+npm start
+```
 
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
+The application will be available at [http://localhost:3000](http://localhost:3000).
 
-## Learn More
+### Building for Production
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+Build the application for production:
 
-To learn React, check out the [React documentation](https://reactjs.org/).
+```bash
+npm run build
+```
 
-### Code Splitting
+The build artifacts will be stored in the `build/` directory.
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
+## Deployment
 
-### Analyzing the Bundle Size
+### Azure Static Web Apps
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
+This application is configured for deployment to Azure Static Web Apps.
 
-### Making a Progressive Web App
+1. Set up your Azure Static Web App resource in Azure Portal.
+2. Configure GitHub Actions for CI/CD by connecting your repository to Azure Static Web Apps.
+3. Ensure your `staticwebapp.config.json` is properly set up:
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
+   ```json
+   {
+     "platform": {
+       "apiRuntime": "node:18"
+     },
+     "globalHeaders": {
+       "Access-Control-Allow-Origin": "*",
+       "Access-Control-Allow-Methods": "GET, POST, PUT"
+     },
+     "buildProperties": {
+       "skipBuildDuringDeploy": false,
+       "apiBuildCommand": "npm run build",
+       "outputLocation": "build"
+     },
+     "routes": [
+       {
+         "route": "/*",
+         "serve": "/index.html",
+         "statusCode": 200
+       }
+     ]
+   }
+   ```
+4. Push changes to your repository to trigger the deployment pipeline.
 
-### Advanced Configuration
+## Configuration
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
+### Environment Variables
 
-### Deployment
+The application uses the following environment variables:
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
 
-### `npm run build` fails to minify
+| Variable              | Description                      | Default                |
+| --------------------- | -------------------------------- | ---------------------- |
+| REACT_APP_API_URL     | Base URL for API calls           | /api                   |
+| CI                    | Disable CI environment for build | false                  |
+| GENERATE_SOURCEMAP    | Generate source maps             | false                  |
+| SKIP_PREFLIGHT_CHECK  | Skip dependency checking         | true                   |
+| DISABLE_ESLINT_PLUGIN | Disable ESLint during build      | true                   |
+| INLINE_RUNTIME_CHUNK  | Inline runtime chunk in HTML     | false (for production) |
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+### API Configuration
+
+The API configuration can be found in `src/pages/Processing.js`. You can modify the `API_CONFIG` object to change the API endpoints:
+
+```javascript
+const API_CONFIG = {
+  baseUrl: process.env.REACT_APP_API_URL || 'https://sightlinks.org/api',
+  endpoints: {
+    webPredict: '/web/predict',
+    status: '/web/status',
+    download: '/download',
+    cancel: '/web/cancel',
+    serverStatus: '/server-status'
+  }
+};
+```
+
+## Application Structure
+
+```
+src/
+├── components/     # Reusable UI components
+├── pages/          # Application pages
+│   ├── About.js           # About page
+│   ├── AlgorithmGuide.js  # Algorithm documentation
+│   ├── ApiDocs.js         # API documentation
+│   ├── Documentation.js   # Main documentation
+│   ├── GitHubSetup.js     # GitHub setup guide
+│   ├── Home.js            # Home page
+│   └── Processing.js      # Main processing page
+├── App.js          # Main application component
+├── index.js        # Application entry point
+└── theme.js        # Material UI theme configuration
+```
+
+## Main Functions
+
+### Image Processing
+
+The application allows users to process images by:
+
+1. Uploading a ZIP file containing images
+2. Configuring processing parameters
+3. Submitting for processing
+4. Tracking processing progress
+5. Downloading results
+
+### Processing Parameters
+
+Users can configure multiple parameters:
+
+- Input type
+- Classification threshold
+- Prediction threshold
+- Save labeled images option
+- Output type
+- YOLO model type
+
+### API Integration
+
+The frontend connects to a backend API that provides:
+
+- Asynchronous processing with progress tracking
+- Direct download of processed results
+- Server status monitoring
+
+## API Documentation
+
+For detailed API documentation, refer to the API.md file or visit the `/api-docs` page in the application.
